@@ -32,9 +32,11 @@ typedef struct fs_ctx
 	/** Image size in bytes. */
 	size_t size;
 
+	/** Superblock */
+	a1fs_superblock *bblk;
 	//TODO: useful runtime state of the mounted file system should be cached
 	// here (NOT in global variables in a1fs.c)
-	a1fs_superblock *bblk;
+
 } fs_ctx;
 
 /**

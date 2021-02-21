@@ -113,6 +113,10 @@ typedef struct a1fs_inode
 
 	//TODO: add necessary fields
 
+	// size of used extent
+	unsigned int used_extent_count;
+	//number of directory
+	unsigned int dir_count;
 	// Size of the extent : block counts
 	uint16_t hz_extent_size;
 	// Pointer to the extents inside the data block
