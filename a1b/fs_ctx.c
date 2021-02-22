@@ -34,5 +34,12 @@ bool fs_ctx_init(fs_ctx *fs, void *image, size_t size)
 void fs_ctx_destroy(fs_ctx *fs)
 {
 	//TODO: cleanup any resources allocated in fs_ctx_init()
+	fs->image = NULL;
+	fs->size = NULL;
+
+	fs->bblk = NULL;
+	fs->ext = NULL;
+	fs->tbl = NULL;
+	fs->err_code = NULL;
 	(void)fs;
 }
