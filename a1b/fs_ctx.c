@@ -35,11 +35,11 @@ void fs_ctx_destroy(fs_ctx *fs)
 {
 	//TODO: cleanup any resources allocated in fs_ctx_init()
 	fs->image = NULL;
-	fs->size = NULL;
+	fs->size = -1;
 
 	fs->bblk = NULL;
 	fs->ext = NULL;
 	fs->tbl = NULL;
-	fs->err_code = NULL;
+	fs->err_code = -1;
 	(void)fs;
 }

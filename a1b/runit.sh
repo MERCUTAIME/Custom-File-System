@@ -2,9 +2,11 @@
 echo 'create the image'
 echo 'truncate -s 10M this'
 truncate -s 10M this
+echo 'make'
+make
 echo 'format the image'
-echo './mkfs.a1fs -i -f 4096 this'
-./mkfs.a1fs -i -f 4096 this
+echo './mkfs.a1fs -f -i 4096 this'
+./mkfs.a1fs -f -i 4096 this
 echo 'mount the image'
 echo './a1fs this /tmp/mercutaime'
 ./a1fs this /tmp/mercutaime
@@ -49,3 +51,7 @@ cat /tmp/mercutaime/testdir/testfile
 echo 'unmount the image'
 echo 'fusermount -u /tmp/mercutaime'
 fusermount -u /tmp/mercutaime
+echo 'remove created directory and file'
+rm -rf /tmp/mercutaime/testdir
+rm this
+echo 'done'
