@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include "helper_func_file.c"
 
 // Using 2.9.x FUSE API
 #define FUSE_USE_VERSION 29
@@ -156,22 +157,38 @@ static int a1fs_getattr(const char *path, struct stat *st)
 
 	//NOTE: This is just a placeholder that allows the file system to be mounted
 	// without errors. You should remove this from your implementation.
-	if (strcmp(path, "/") == 0)
+
+	//NOTE: all the fields set below are required and must be set according
+	// to the information stored in the corresponding inode
+	st->st_mode = S_IFDIR | 0777;
+	st->st_nlink = 2;
+	st->st_size = 0;
+	st->st_blocks = 0 * A1FS_BLOCK_SIZE / 512;
+	st->st_mtim = (struct timespec){0};
+	return 0;
+
+	//lookup the inode for given path and, if it exists, fill in the
+	//required fields based on the information stored in the inode
+
+	a1fs_inode *inode;
+	find_path(fs, &inode, path);
+	if (fs->err_code == 0)
 	{
-		//NOTE: all the fields set below are required and must be set according
-		// to the information stored in the corresponding inode
-		st->st_mode = S_IFDIR | 0777;
-		st->st_nlink = 2;
-		st->st_size = 0;
-		st->st_blocks = 0 * A1FS_BLOCK_SIZE / 512;
-		st->st_mtim = (struct timespec){0};
-		return 0;
+		st->st_size = inode->size;
+		st->st_mode = inode->mode;
+		unsigned int result = 1 + st->st_size / A1FS_BLOCK_SIZE;
+		if (st->st_size % A1FS_BLOCK_SIZE == 0)
+		{
+			result = result - 1;
+		}
+		result *= A1FS_BLOCK_SIZE;
+		st->st_blocks = result / 512;
+		st->st_mtim = inode->mtime;
+		st->st_ino = inode->hz_inode_pos;
+		st->st_nlink = inode->links;
 	}
 
-	//TODO: lookup the inode for given path and, if it exists, fill in the
-	// required fields based on the information stored in the inode
-	(void)fs;
-	return -ENOSYS;
+	return fs->err_code;
 }
 
 /**
@@ -200,20 +217,24 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	(void)offset; // unused
 	(void)fi;	  // unused
 	fs_ctx *fs = get_fs();
+	unsigned int b = 0;
 
-	//NOTE: This is just a placeholder that allows the file system to be mounted
-	// without errors. You should remove this from your implementation.
-	if (strcmp(path, "/") == 0)
+	a1fs_inode *dir;
+	find_path(fs, &dir, path);
+	cal_ent(dir, fs, true, "");
+
+	if ((fs->ent) == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
+		return -ENOMEM;
+
+	while (b < (dir->size / sizeof(a1fs_dentry)))
 	{
-		filler(buf, ".", NULL, 0);
-		filler(buf, "..", NULL, 0);
-		return 0;
+		if (filler(buf, fs->ent[b].name, NULL, 0) == 1)
+			return -ENOMEM;
+		b++;
 	}
 
-	//TODO: lookup the directory inode for given path and iterate through its
-	// directory entries
-	(void)fs;
-	return -ENOSYS;
+	free(fs->ent);
+	return 0;
 }
 
 /**
