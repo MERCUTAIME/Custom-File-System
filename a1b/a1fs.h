@@ -32,6 +32,7 @@
  * individual inode) must also occupy an integral number of blocks.
  */
 #define A1FS_BLOCK_SIZE 4096
+#define ENASDIR 300
 
 /** Block number (block pointer) type. */
 typedef uint32_t a1fs_blk_t;
@@ -113,14 +114,14 @@ typedef struct a1fs_inode
 
 	//TODO: add necessary fields
 
-	// size of used extent
-	unsigned int used_extent_count;
-	//number of directory
-	unsigned int dir_count;
+	// // size of used extent
+	// unsigned int used_extent_count;
+	// //number of directory
+	// unsigned int dir_count;
 	// Size of the extent : block counts
 	uint16_t hz_extent_size;
 	// Pointer to the extents inside the data block
-	int32_t hz_extent_p;
+	int hz_extent_p;
 	//The position of the inode in the bitmap
 	uint32_t hz_inode_pos;
 	//Padding

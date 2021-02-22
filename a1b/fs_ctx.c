@@ -24,9 +24,10 @@ bool fs_ctx_init(fs_ctx *fs, void *image, size_t size)
 	fs->image = image;
 	fs->size = size;
 
-	//TODO: check if the file system image can be mounted and initialize its
-	// runtime state
-	fs->bblk = (a1fs_superblock *)(fs->image);
+	fs->bblk = (a1fs_superblock *)image;
+	fs->ext = fs->image + (fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
+	fs->tbl = fs->image + fs->bblk->hz_inode_table * A1FS_BLOCK_SIZE;
+	fs->err_code = 0;
 	return true;
 }
 
