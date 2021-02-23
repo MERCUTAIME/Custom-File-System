@@ -40,6 +40,8 @@ typedef struct fs_ctx
 	a1fs_dentry *ent;
 	/** inode table**/
 	a1fs_inode *tbl;
+	/**inode for dir**/
+	a1fs_inode *node_pt;
 	/** Error **/
 	int err_code;
 

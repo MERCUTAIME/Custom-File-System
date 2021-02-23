@@ -23,6 +23,7 @@
 #include <sys/mman.h>
 #include "helper_func_file.c"
 
+#include "heleper2.c"
 // Using 2.9.x FUSE API
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
@@ -158,24 +159,15 @@ static int a1fs_getattr(const char *path, struct stat *st)
 	//NOTE: This is just a placeholder that allows the file system to be mounted
 	// without errors. You should remove this from your implementation.
 
-	//NOTE: all the fields set below are required and must be set according
-	// to the information stored in the corresponding inode
-	st->st_mode = S_IFDIR | 0777;
-	st->st_nlink = 2;
-	st->st_size = 0;
-	st->st_blocks = 0 * A1FS_BLOCK_SIZE / 512;
-	st->st_mtim = (struct timespec){0};
-	return 0;
-
 	//lookup the inode for given path and, if it exists, fill in the
 	//required fields based on the information stored in the inode
 
-	a1fs_inode *inode;
-	find_path(fs, &inode, path);
+	clear_node_pt(fs);
+	find_path(fs, path);
 	if (fs->err_code == 0)
 	{
-		st->st_size = inode->size;
-		st->st_mode = inode->mode;
+		st->st_size = fs->node_pt->size;
+		st->st_mode = fs->node_pt->mode;
 		unsigned int result = 1 + st->st_size / A1FS_BLOCK_SIZE;
 		if (st->st_size % A1FS_BLOCK_SIZE == 0)
 		{
@@ -183,9 +175,9 @@ static int a1fs_getattr(const char *path, struct stat *st)
 		}
 		result *= A1FS_BLOCK_SIZE;
 		st->st_blocks = result / 512;
-		st->st_mtim = inode->mtime;
-		st->st_ino = inode->hz_inode_pos;
-		st->st_nlink = inode->links;
+		st->st_mtim = fs->node_pt->mtime;
+		st->st_ino = fs->node_pt->hz_inode_pos;
+		st->st_nlink = fs->node_pt->links;
 	}
 
 	return fs->err_code;
@@ -219,20 +211,22 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	fs_ctx *fs = get_fs();
 	unsigned int b = 0;
 
-	a1fs_inode *dir;
-	find_path(fs, &dir, path);
-	cal_ent(dir, fs, true, "");
+	find_path(fs, path);
+	cal_ent(fs, true, "");
 
+	//Failed at calling filler
 	if ((fs->ent) == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
 		return -ENOMEM;
 
-	while (b < (dir->size / sizeof(a1fs_dentry)))
+	//Failed at calling filler
+	while (b < (fs->node_pt->size / sizeof(a1fs_dentry)))
 	{
 		if (filler(buf, fs->ent[b].name, NULL, 0) == 1)
-			return -ENOMEM;
+			clear_node_pt(fs);
+		return -ENOMEM;
 		b++;
 	}
-
+	clear_node_pt(fs);
 	free(fs->ent);
 	return 0;
 }
@@ -261,6 +255,7 @@ static int a1fs_mkdir(const char *path, mode_t mode)
 	fs_ctx *fs = get_fs();
 
 	//TODO: create a directory at given path with given mode
+
 	(void)path;
 	(void)mode;
 	(void)fs;

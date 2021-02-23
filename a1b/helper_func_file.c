@@ -96,18 +96,19 @@ a1fs_dentry *get_ext_info(bool is_blk, fs_ctx *fs, int node)
 }
 
 /* Loop over db in extent*/
-void loop_datablock_ext(a1fs_blk_t length, int start, fs_ctx *fs, unsigned int index, a1fs_inode *dir, bool readdir, char *name)
+void loop_datablock_ext(a1fs_blk_t length, int start, fs_ctx *fs, unsigned int index, bool readdir, char *name)
 {
+
     unsigned int a = start;
-    while (a != length - 1)
+    while (a != length - 1 && fs->err_code != 1)
     {
         a1fs_dentry *curr = get_ext_info(true, fs, a);
         size_t data_size = A1FS_BLOCK_SIZE;
         if (a == length)
         {
-            if (index + 1 == dir->hz_extent_size)
+            if (index + 1 == fs->node_pt->hz_extent_size)
             {
-                data_size = dir->size % A1FS_BLOCK_SIZE;
+                data_size = fs->node_pt->size % A1FS_BLOCK_SIZE;
             }
         }
         if (readdir)
@@ -117,6 +118,7 @@ void loop_datablock_ext(a1fs_blk_t length, int start, fs_ctx *fs, unsigned int i
         }
         else
         {
+            fs->err_code = -1;
             curr = (a1fs_dentry *)curr;
             int temp = data_size / sizeof(a1fs_dentry);
             for (int c = 0; c < temp; c++)
@@ -124,35 +126,36 @@ void loop_datablock_ext(a1fs_blk_t length, int start, fs_ctx *fs, unsigned int i
                 if (strcmp(curr[c].name, name) == 0)
                 {
                     fs->ent = &curr[c];
+                    fs->err_code = 1;
+                    break;
                 }
             }
         }
 
         a++;
     }
-    if (readdir)
+    if (fs->err_code == 1)
     {
         fs->err_code = 0;
     }
     else
     {
-        fs->err_code = -ENODATA;
+        fs->err_code = -ENOENT;
     }
 }
 
-void cal_ent(a1fs_inode *dir, fs_ctx *fs, bool is_readdir, char *name)
+void cal_ent(fs_ctx *fs, bool is_readdir, char *name)
 {
-    fs->ent = malloc(dir->size);
+    fs->ent = malloc(fs->node_pt->size);
     if (fs->ent != NULL || !is_readdir)
     {
-
-        get_ext_info(false, fs, dir->hz_extent_p);
+        get_ext_info(false, fs, fs->node_pt->hz_extent_p);
         unsigned int m = 0;
-        uint16_t ext_size = dir->hz_extent_size;
+        uint16_t ext_size = fs->node_pt->hz_extent_size;
         while (m < ext_size)
         {
             a1fs_extent extent = fs->ext[m];
-            loop_datablock_ext(extent.start + extent.count + 1, extent.start, fs, m, dir, is_readdir, name);
+            loop_datablock_ext(extent.start + extent.count + 1, extent.start, fs, m, is_readdir, name);
             m++;
         }
     }
@@ -182,6 +185,10 @@ void load_inode(int *pos, fs_ctx *fs)
         *pos = fs->ent->ino;
         fs->err_code = 0;
     }
+    else if (fs->ent != NULL)
+    {
+        fs->err_code = -ENOENT;
+    }
     else
     {
         fs->err_code = -ENOTDIR;
@@ -189,35 +196,33 @@ void load_inode(int *pos, fs_ctx *fs)
 }
 void dig_dir(fs_ctx *fs, char *temp_path, int pos, const char *path)
 {
-
     while (temp_path != NULL && fs->err_code == 0)
     {
-        fs->err_code = (get_node(fs, pos)->mode & S_IFDIR) != S_IFDIR;
-        cal_ent(get_node(fs, pos), fs, false, temp_path);
+
+        fs->node_pt = get_node(fs, pos);
+        fs->err_code = (fs->node_pt->mode & S_IFDIR) != S_IFDIR;
+        cal_ent(fs, false, temp_path);
         load_inode(&pos, fs);
         temp_path = init_path(path, false);
     }
 }
 
-int find_path(fs_ctx *fs, a1fs_inode **target, const char *p)
+int find_path(fs_ctx *fs, const char *p)
 {
     if (p[0] == '/')
     {
         int pos = 0;
         char *temp_path = init_path(p, true);
         dig_dir(fs, temp_path, pos, p);
-        if (fs->err_code != 0)
-            fs->err_code = -ENOTDIR;
-        else
+        if (fs->err_code == 0)
         {
-            *target = get_node(fs, pos);
+            fs->node_pt = get_node(fs, pos);
         }
     }
     else
     {
         fprintf(stderr, "Not an absolute path\n");
-        fs->err_code = -ENASDIR;
+        fs->err_code = -ENOTDIR;
     }
     return fs->err_code;
 }
-

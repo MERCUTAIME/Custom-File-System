@@ -23,20 +23,24 @@ bool fs_ctx_init(fs_ctx *fs, void *image, size_t size)
 {
 	fs->image = image;
 	fs->size = size;
-
 	fs->bblk = (a1fs_superblock *)image;
 	fs->ext = fs->image + (fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
 	fs->tbl = fs->image + fs->bblk->hz_inode_table * A1FS_BLOCK_SIZE;
 	fs->err_code = 0;
+	fs->node_pt = NULL;
 	return true;
+}
+
+void clear_node_pt(fs_ctx *fs)
+{
+	fs->node_pt = NULL;
 }
 
 void fs_ctx_destroy(fs_ctx *fs)
 {
-	//TODO: cleanup any resources allocated in fs_ctx_init()
+	//Cleanup any resources allocated in fs_ctx_init()
 	fs->image = NULL;
 	fs->size = -1;
-
 	fs->bblk = NULL;
 	fs->ext = NULL;
 	fs->tbl = NULL;
