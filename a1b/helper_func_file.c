@@ -228,6 +228,7 @@ void dig_dir(fs_ctx *fs, char *temp_path, int pos, const char *path)
     }
 }
 
+/**Look up and Return the inode for a given path **/
 int find_path(const char *path, a1fs_inode **target, fs_ctx *fs)
 {
     int pos = 0;

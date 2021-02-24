@@ -375,10 +375,20 @@ static int a1fs_utimens(const char *path, const struct timespec times[2])
 	//TODO: update the modification timestamp (mtime) in the inode for given
 	// path with either the time passed as argument or the current time,
 	// according to the utimensat man page
-	(void)path;
-	(void)times;
-	(void)fs;
-	return -ENOSYS;
+
+	//Clear error code
+	fs->err_code = 0;
+	a1fs_inode *node;
+	find_path(path, &node, fs);
+	const struct timespec last_time = times[1];
+	if (last_time.tv_nsec != UTIME_NOW)
+		node->mtime = last_time;
+	else
+	{
+		clock_gettime(CLOCK_REALTIME, &(node->mtime));
+	}
+
+	return 0;
 }
 
 /**
