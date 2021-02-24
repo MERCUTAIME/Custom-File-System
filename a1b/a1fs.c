@@ -21,13 +21,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include "helper_func_file.c"
 
-#include "heleper2.c"
 // Using 2.9.x FUSE API
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
-
+#include "helper_func_file.c"
+// #include "heleper2.c"
+#include <time.h>
+#include <libgen.h>
 #include "a1fs.h"
 #include "fs_ctx.h"
 #include "options.h"
@@ -162,12 +163,24 @@ static int a1fs_getattr(const char *path, struct stat *st)
 	//lookup the inode for given path and, if it exists, fill in the
 	//required fields based on the information stored in the inode
 
-	clear_node_pt(fs);
-	find_path(fs, path);
+	//Clear err_node
+	fs->err_code = 0;
+	//TODO: lookup the inode for given path and, if it exists, fill in the
+	// required fields based on the information stored in the inode
+
+	a1fs_inode *inode;
+	find_path(path, &inode, fs);
 	if (fs->err_code == 0)
 	{
-		st->st_size = fs->node_pt->size;
-		st->st_mode = fs->node_pt->mode;
+
+		//NOTE: all the fields set below are required and must be set according
+		// to the information stored in the corresponding inode
+
+		st->st_nlink = inode->links;
+		st->st_size = inode->size;
+		st->st_mtim = inode->mtime;
+		st->st_ino = inode->hz_inode_pos;
+		st->st_mode = inode->mode;
 		unsigned int result = 1 + st->st_size / A1FS_BLOCK_SIZE;
 		if (st->st_size % A1FS_BLOCK_SIZE == 0)
 		{
@@ -175,11 +188,7 @@ static int a1fs_getattr(const char *path, struct stat *st)
 		}
 		result *= A1FS_BLOCK_SIZE;
 		st->st_blocks = result / 512;
-		st->st_mtim = fs->node_pt->mtime;
-		st->st_ino = fs->node_pt->hz_inode_pos;
-		st->st_nlink = fs->node_pt->links;
 	}
-
 	return fs->err_code;
 }
 
@@ -209,26 +218,26 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	(void)offset; // unused
 	(void)fi;	  // unused
 	fs_ctx *fs = get_fs();
-	unsigned int b = 0;
 
-	find_path(fs, path);
-	cal_ent(fs, true, "");
+	fs->err_code = 0;
 
-	//Failed at calling filler
-	if ((fs->ent) == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
+	//Lookup the directory inode for given path and iterate through its
+	// directory entries
+
+	a1fs_inode *dir;
+	find_path(path, &dir, fs);
+	a1fs_dentry *entries = malloc(dir->size);
+	if (entries == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
 		return -ENOMEM;
 
-	//Failed at calling filler
-	while (b < (fs->node_pt->size / sizeof(a1fs_dentry)))
-	{
-		if (filler(buf, fs->ent[b].name, NULL, 0) == 1)
-			clear_node_pt(fs);
-		return -ENOMEM;
-		b++;
-	}
-	clear_node_pt(fs);
-	free(fs->ent);
-	return 0;
+	//Bug here,should've assigned entry here,but it doesn't work
+	find_ent_inext(entries, dir, fs, "", true);
+	//Check whether calling filler generates error
+	//Update fs->err_code
+	check_filler_err(fs, dir->size, buf, filler, entries);
+	free(entries);
+
+	return fs->err_code;
 }
 
 /**
@@ -251,15 +260,16 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
  */
 static int a1fs_mkdir(const char *path, mode_t mode)
 {
-	mode = mode | S_IFDIR;
-	fs_ctx *fs = get_fs();
+	{
+		mode = mode | S_IFDIR;
+		fs_ctx *fs = get_fs();
 
-	//TODO: create a directory at given path with given mode
-
-	(void)path;
-	(void)mode;
-	(void)fs;
-	return -ENOSYS;
+		//TODO: create a directory at given path with given mode
+		(void)path;
+		(void)mode;
+		(void)fs;
+		return -ENOSYS;
+	}
 }
 
 /**

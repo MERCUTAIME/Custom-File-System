@@ -6,13 +6,17 @@
 #include <unistd.h>
 #include <time.h>
 
+#include <fuse.h>
 #include <errno.h>
 #include "a1fs.h"
 #include "fs_ctx.h"
 #include "options.h"
 #include "map.h"
 //Helper for mkfs.c
-
+a1fs_inode *get_node(fs_ctx *fs, int pos)
+{
+    return &(fs->tbl[pos]);
+}
 unsigned int mkfs_helper(unsigned int a, unsigned int b)
 {
     unsigned int result = 1 + b / a;
@@ -76,94 +80,78 @@ void init_root_dir(const struct a1fs_superblock *bblk, void *image, unsigned int
     head_node->hz_extent_p = -1;
 }
 
-a1fs_inode *get_node(fs_ctx *fs, int pos)
-{
-    return &(fs->tbl[pos]);
-}
 a1fs_dentry *get_ext_info(bool is_blk, fs_ctx *fs, int node)
 {
-    a1fs_dentry *result = fs->image;
-    size_t s = (node + fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
-    if (is_blk)
+    a1fs_dentry *result = fs->image + (node + fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
+    if (!is_blk)
     {
-        result += s;
-    }
-    else
-    {
-        fs->ext = (void *)result + s;
+        fs->ext = (void *)result;
     }
     return result;
 }
 
 /* Loop over db in extent*/
-void loop_datablock_ext(a1fs_blk_t length, int start, fs_ctx *fs, unsigned int index, bool readdir, char *name)
+a1fs_dentry *find_entry(a1fs_dentry *ent, size_t ent_blk_count, fs_ctx *fs, a1fs_dentry *head_blk, char *name)
 {
-
-    unsigned int a = start;
-    while (a != length - 1 && fs->err_code != 1)
+    for (unsigned int d = 0; d < ent_blk_count / sizeof(a1fs_dentry); d++)
     {
-        a1fs_dentry *curr = get_ext_info(true, fs, a);
-        size_t data_size = A1FS_BLOCK_SIZE;
-        if (a == length)
+        if (!strcmp(head_blk[d].name, name))
         {
-            if (index + 1 == fs->node_pt->hz_extent_size)
-            {
-                data_size = fs->node_pt->size % A1FS_BLOCK_SIZE;
-            }
+            fs->err_code = 0;
+            ent = &head_blk[d];
+            break;
         }
-        if (readdir)
-        {
-            memcpy((void *)fs->ent, (void *)curr, data_size);
-            fs->ent += A1FS_BLOCK_SIZE;
-        }
-        else
-        {
-            fs->err_code = -1;
-            curr = (a1fs_dentry *)curr;
-            int temp = data_size / sizeof(a1fs_dentry);
-            for (int c = 0; c < temp; c++)
-            {
-                if (strcmp(curr[c].name, name) == 0)
-                {
-                    fs->ent = &curr[c];
-                    fs->err_code = 1;
-                    break;
-                }
-            }
-        }
-
-        a++;
     }
-    if (fs->err_code == 1)
+    return ent;
+}
+
+a1fs_dentry *blk_allocation(unsigned int a, unsigned int m, uint16_t ext_size, a1fs_dentry *ent, a1fs_inode *dir, fs_ctx *fs, char *name, bool allocate)
+{
+    size_t length = fs->ext[m].start + fs->ext[m].count;
+    size_t ent_blk_count = A1FS_BLOCK_SIZE;
+    a1fs_dentry *head_blk = get_ext_info(true, fs, a);
+    if (a == (length - 1))
     {
-        fs->err_code = 0;
+        if (m + 1 == (ext_size))
+            ent_blk_count = dir->size % ent_blk_count;
+    }
+    if (allocate)
+    {
+        memcpy((void *)ent, (void *)head_blk, ent_blk_count);
+        ent += A1FS_BLOCK_SIZE;
     }
     else
     {
-        fs->err_code = -ENOENT;
+        ent = find_entry(ent, ent_blk_count, fs, head_blk, name);
     }
+    return ent;
+}
+a1fs_dentry *loop_db(a1fs_dentry *ent, a1fs_blk_t length, int start, fs_ctx *fs, unsigned int m, a1fs_inode *dir, bool allocate, char *name)
+{
+    unsigned int a = start;
+
+    while (a < length && fs->err_code == PROCESS)
+    {
+        size_t ent_blk_count = A1FS_BLOCK_SIZE;
+        a1fs_dentry *head_blk = get_ext_info(true, fs, a);
+        if (m + 1 == (dir->hz_extent_size) && a == (length - 1))
+        {
+            ent_blk_count = dir->size % ent_blk_count;
+        }
+        if (allocate)
+        {
+            memcpy((void *)ent, (const void *)head_blk, ent_blk_count);
+            ent += A1FS_BLOCK_SIZE;
+        }
+        else
+        {
+            ent = find_entry(ent, ent_blk_count, fs, head_blk, name);
+        }
+        a++;
+    }
+    return ent;
 }
 
-void cal_ent(fs_ctx *fs, bool is_readdir, char *name)
-{
-    fs->ent = malloc(fs->node_pt->size);
-    if (fs->ent != NULL || !is_readdir)
-    {
-        get_ext_info(false, fs, fs->node_pt->hz_extent_p);
-        unsigned int m = 0;
-        uint16_t ext_size = fs->node_pt->hz_extent_size;
-        while (m < ext_size)
-        {
-            a1fs_extent extent = fs->ext[m];
-            loop_datablock_ext(extent.start + extent.count + 1, extent.start, fs, m, is_readdir, name);
-            m++;
-        }
-    }
-}
-void *get_block(int block_number, fs_ctx *fs)
-{
-    return fs->image + (fs->bblk->hz_datablk_head + block_number) * A1FS_BLOCK_SIZE;
-}
 char *init_path(const char *path, bool is_first)
 {
     char new_p[A1FS_PATH_MAX];
@@ -178,51 +166,111 @@ char *init_path(const char *path, bool is_first)
         return strtok(NULL, "/");
     }
 }
-void load_inode(int *pos, fs_ctx *fs)
+void load_inode(a1fs_dentry *ent, int *pos, fs_ctx *fs)
 {
-    if (fs->err_code != 0 && fs->ent != NULL)
+    if (ent != NULL && fs->err_code == 0)
     {
-        *pos = fs->ent->ino;
+        *pos = ent->ino;
         fs->err_code = 0;
     }
-    else if (fs->ent != NULL)
+}
+a1fs_dentry *find_ent_inext(a1fs_dentry *ent, a1fs_inode *dir, fs_ctx *fs, char *name, bool allocate)
+{
+    //Update fs->ext to point to the head of the extent array
+    get_ext_info(false, fs, dir->hz_extent_p);
+    //loop through extents
+    unsigned int m = 0;
+    uint16_t ext_size = dir->hz_extent_size;
+    if (fs->err_code == 0)
+    {
+        fs->err_code = PROCESS;
+    }
+    while (m < ext_size && fs->err_code == PROCESS)
+    {
+        size_t length = fs->ext[m].start + fs->ext[m].count;
+        unsigned int a = fs->ext[m].start;
+        a1fs_dentry *k = loop_db(ent, length, a, fs, m, dir, allocate, name);
+        if (!allocate)
+        {
+            ent = k;
+        }
+        m++;
+    }
+
+    if (!allocate && fs->err_code != 0)
     {
         fs->err_code = -ENOENT;
+        ent = NULL;
     }
     else
     {
-        fs->err_code = -ENOTDIR;
+        fs->err_code = 0;
     }
+
+    return ent;
 }
+
 void dig_dir(fs_ctx *fs, char *temp_path, int pos, const char *path)
 {
     while (temp_path != NULL && fs->err_code == 0)
     {
+        a1fs_inode *directory = get_node(fs, pos);
+        if ((directory->mode & S_IFDIR) != S_IFDIR)
+        {
+            fs->err_code = -ENOTDIR;
+            break;
+        }
 
-        fs->node_pt = get_node(fs, pos);
-        fs->err_code = (fs->node_pt->mode & S_IFDIR) != S_IFDIR;
-        cal_ent(fs, false, temp_path);
-        load_inode(&pos, fs);
+        a1fs_dentry *ent = 0;
+        ent = find_ent_inext(ent, get_node(fs, pos), fs, temp_path, false);
+        load_inode(ent, &pos, fs);
         temp_path = init_path(path, false);
     }
 }
 
-int find_path(fs_ctx *fs, const char *p)
+int find_path(const char *path, a1fs_inode **target, fs_ctx *fs)
 {
-    if (p[0] == '/')
+    int pos = 0;
+    if (path[0] == '/')
     {
-        int pos = 0;
-        char *temp_path = init_path(p, true);
-        dig_dir(fs, temp_path, pos, p);
+        char *name = init_path(path, true);
+        while (name != NULL)
+        {
+            // Check if the directory exists.
+            if ((get_node(fs, pos)->mode & S_IFDIR) != S_IFDIR)
+            {
+                fs->err_code = -ENOTDIR;
+                break;
+            }
+            a1fs_dentry *entry = 0;
+            entry = find_ent_inext(entry, get_node(fs, pos), fs, name, false);
+            load_inode(entry, &pos, fs);
+            name = init_path(path, false);
+        }
         if (fs->err_code == 0)
         {
-            fs->node_pt = get_node(fs, pos);
+            *target = get_node(fs, pos);
         }
     }
     else
     {
-        fprintf(stderr, "Not an absolute path\n");
-        fs->err_code = -ENOTDIR;
+        //Not an absolute path
+        fs->err_code = -ENASDIR;
     }
     return fs->err_code;
+}
+void check_filler_err(fs_ctx *fs, size_t size, void *buf, fuse_fill_dir_t filler, a1fs_dentry *entries)
+{
+    unsigned int b = 0;
+    //Failed at calling filler
+    while (b < (size / sizeof(a1fs_dentry)))
+    {
+        if (filler(buf, entries[b].name, NULL, 0) == 1)
+        {
+            fs->err_code = -ENOMEM;
+            break;
+        }
+
+        b++;
+    }
 }
