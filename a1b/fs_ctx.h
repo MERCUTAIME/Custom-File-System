@@ -38,12 +38,17 @@ typedef struct fs_ctx
 	a1fs_extent *ext;
 	/** Pointer of entries*/
 	a1fs_dentry *ent;
+	/** Target inode of the path*/
+	a1fs_inode *path_inode;
 	/** inode table**/
 	a1fs_inode *tbl;
 	/** Error **/
 	int err_code;
-	/** Target inode of the path*/
-	a1fs_dentry *path_inode;
+	/** Inode bitmap **/
+	unsigned char *bitmp_inode;
+	/**Data Bitmap **/
+	unsigned char *bitmp_data;
+
 } fs_ctx;
 
 /**

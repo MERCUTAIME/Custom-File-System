@@ -23,10 +23,13 @@ bool fs_ctx_init(fs_ctx *fs, void *image, size_t size)
 {
 	fs->image = image;
 	fs->size = size;
+
 	fs->bblk = (a1fs_superblock *)image;
 	fs->ext = fs->image + (fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
 	fs->tbl = fs->image + fs->bblk->hz_inode_table * A1FS_BLOCK_SIZE;
 	fs->err_code = 0;
+	fs->bitmp_inode = fs->image + (fs->bblk->hz_bitmap_inode) * A1FS_BLOCK_SIZE;
+	fs->bitmp_data = fs->image + fs->bblk->hz_bitmap_data * A1FS_BLOCK_SIZE;
 	fs->path_inode = 0;
 	return true;
 }

@@ -26,9 +26,8 @@
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
 #include "helper_func_file.c"
-// #include "heleper2.c"
+
 #include <time.h>
-#include <libgen.h>
 #include "a1fs.h"
 #include "fs_ctx.h"
 #include "options.h"
@@ -157,30 +156,25 @@ static int a1fs_getattr(const char *path, struct stat *st)
 
 	memset(st, 0, sizeof(*st));
 
-	//NOTE: This is just a placeholder that allows the file system to be mounted
-	// without errors. You should remove this from your implementation.
-
-	//lookup the inode for given path and, if it exists, fill in the
-	//required fields based on the information stored in the inode
-
 	//Clear err_node
 	fs->err_code = 0;
 	//TODO: lookup the inode for given path and, if it exists, fill in the
 	// required fields based on the information stored in the inode
 
-	a1fs_inode *inode;
-	find_path(path, &inode, fs);
+	// a1fs_inode *inode;
+	// find_path(path, &inode, fs);
+	find_path_inode(path, fs);
 	if (fs->err_code == 0)
 	{
 
 		//NOTE: all the fields set below are required and must be set according
 		// to the information stored in the corresponding inode
 
-		st->st_nlink = inode->links;
-		st->st_size = inode->size;
-		st->st_mtim = inode->mtime;
-		st->st_ino = inode->hz_inode_pos;
-		st->st_mode = inode->mode;
+		st->st_nlink = fs->path_inode->links;
+		st->st_size = fs->path_inode->size;
+		st->st_mtim = fs->path_inode->mtime;
+		st->st_ino = fs->path_inode->hz_inode_pos;
+		st->st_mode = fs->path_inode->mode;
 		unsigned int result = 1 + st->st_size / A1FS_BLOCK_SIZE;
 		if (st->st_size % A1FS_BLOCK_SIZE == 0)
 		{
@@ -221,11 +215,8 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 	fs->err_code = 0;
 
-	//Lookup the directory inode for given path and iterate through its
-	// directory entries
-
-	a1fs_inode *dir;
-	find_path(path, &dir, fs);
+	find_path_inode(path, fs);
+	a1fs_inode *dir = fs->path_inode;
 	a1fs_dentry *entries = malloc(dir->size);
 	if (entries == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
 		return -ENOMEM;
@@ -264,11 +255,8 @@ static int a1fs_mkdir(const char *path, mode_t mode)
 		mode = mode | S_IFDIR;
 		fs_ctx *fs = get_fs();
 
-		//TODO: create a directory at given path with given mode
-		(void)path;
-		(void)mode;
-		(void)fs;
-		return -ENOSYS;
+		//Create a directory at given path with given mode
+		return create_file_dir(fs, path, mode, true);
 	}
 }
 
@@ -321,11 +309,8 @@ static int a1fs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	assert(S_ISREG(mode));
 	fs_ctx *fs = get_fs();
 
-	//TODO: create a file at given path with given mode
-	(void)path;
-	(void)mode;
-	(void)fs;
-	return -ENOSYS;
+	//Create a file at given path with given mode
+	return create_file_dir(fs, path, mode, true);
 }
 
 /**
@@ -378,14 +363,14 @@ static int a1fs_utimens(const char *path, const struct timespec times[2])
 
 	//Clear error code
 	fs->err_code = 0;
-	a1fs_inode *node;
-	find_path(path, &node, fs);
+
+	find_path_inode(path, fs);
 	const struct timespec last_time = times[1];
 	if (last_time.tv_nsec != UTIME_NOW)
-		node->mtime = last_time;
+		fs->path_inode->mtime = last_time;
 	else
 	{
-		clock_gettime(CLOCK_REALTIME, &(node->mtime));
+		clock_gettime(CLOCK_REALTIME, &(fs->path_inode->mtime));
 	}
 
 	return 0;
