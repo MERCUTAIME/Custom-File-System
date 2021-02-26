@@ -44,5 +44,4 @@ void fs_ctx_destroy(fs_ctx *fs)
 	fs->tbl = NULL;
 	fs->path_inode = NULL;
 	fs->err_code = -1;
-	(void)fs;
 }
