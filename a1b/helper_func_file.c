@@ -5,11 +5,12 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include <time.h>
-
+#include <math.h>
+#define max(a, b) (((a) > (b)) ? (a) : (b))
+#include <libgen.h>
 #include <fuse.h>
 #include <errno.h>
 #include "a1fs.h"
-#include <libgen.h>
 #include "fs_ctx.h"
 #include "options.h"
 #include "map.h"
@@ -79,7 +80,7 @@ void init_dir(a1fs_inode *head_node, mode_t mode, int pos)
     head_node->hz_extent_p = -1;
 }
 
-a1fs_dentry *get_ext_info(bool is_blk, fs_ctx *fs, int node)
+a1fs_dentry *update_ext_blk(bool is_blk, fs_ctx *fs, int node)
 {
     a1fs_dentry *result = fs->image + (node + fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
     if (!is_blk)
@@ -108,7 +109,7 @@ a1fs_dentry *blk_allocation(unsigned int a, unsigned int m, uint16_t ext_size, a
 {
     size_t length = fs->ext[m].start + fs->ext[m].count;
     size_t ent_blk_count = A1FS_BLOCK_SIZE;
-    a1fs_dentry *head_blk = get_ext_info(true, fs, a);
+    a1fs_dentry *head_blk = update_ext_blk(true, fs, a);
     if (a == (length - 1))
     {
         if (m + 1 == (ext_size))
@@ -132,7 +133,7 @@ a1fs_dentry *loop_db(a1fs_dentry *ent, a1fs_blk_t length, int start, fs_ctx *fs,
     while (a < length && fs->err_code == PROCESS)
     {
         size_t ent_blk_count = A1FS_BLOCK_SIZE;
-        a1fs_dentry *head_blk = get_ext_info(true, fs, a);
+        a1fs_dentry *head_blk = update_ext_blk(true, fs, a);
         if (m + 1 == (dir->hz_extent_size) && a == (length - 1))
         {
             ent_blk_count = dir->size % ent_blk_count;
@@ -173,10 +174,10 @@ void load_inode(a1fs_dentry *ent, int *pos, fs_ctx *fs)
         fs->err_code = 0;
     }
 }
-a1fs_dentry *find_ent_inext(a1fs_dentry *ent, a1fs_inode *dir, fs_ctx *fs, char *name, bool allocate)
+a1fs_dentry *find_ent_in_ext(a1fs_inode *dir, fs_ctx *fs, char *name, bool allocate)
 {
     //Update fs->ext to point to the head of the extent array
-    get_ext_info(false, fs, dir->hz_extent_p);
+    update_ext_blk(false, fs, dir->hz_extent_p);
     //loop through extents
     unsigned int m = 0;
     uint16_t ext_size = dir->hz_extent_size;
@@ -188,10 +189,10 @@ a1fs_dentry *find_ent_inext(a1fs_dentry *ent, a1fs_inode *dir, fs_ctx *fs, char 
     {
         size_t length = fs->ext[m].start + fs->ext[m].count;
         unsigned int a = fs->ext[m].start;
-        a1fs_dentry *k = loop_db(ent, length, a, fs, m, dir, allocate, name);
+        a1fs_dentry *k = loop_db(fs->ent, length, a, fs, m, dir, allocate, name);
         if (!allocate)
         {
-            ent = k;
+            fs->ent = k;
         }
         m++;
     }
@@ -199,38 +200,16 @@ a1fs_dentry *find_ent_inext(a1fs_dentry *ent, a1fs_inode *dir, fs_ctx *fs, char 
     if (!allocate && fs->err_code != 0)
     {
         fs->err_code = -ENOENT;
-        ent = NULL;
+        fs->ent = NULL;
     }
     else
     {
         fs->err_code = 0;
     }
 
-    return ent;
+    return fs->ent;
 }
 
-void dig_dir(fs_ctx *fs, char *temp_path, int pos, const char *path)
-{
-    while (temp_path != NULL && fs->err_code == 0)
-    {
-        a1fs_inode *directory = get_node(fs, pos);
-        if ((directory->mode & S_IFDIR) != S_IFDIR)
-        {
-            fs->err_code = -ENOTDIR;
-            break;
-        }
-
-        a1fs_dentry *ent = 0;
-        ent = find_ent_inext(ent, get_node(fs, pos), fs, temp_path, false);
-        load_inode(ent, &pos, fs);
-        temp_path = init_path(path, false);
-    }
-}
-
-/**Find correponding inode given path in fs
- * The inode will be stored in fs->path_node
- * 
-*/
 int find_path_inode(const char *path, fs_ctx *fs)
 {
     int pos = 0;
@@ -245,9 +224,8 @@ int find_path_inode(const char *path, fs_ctx *fs)
                 fs->err_code = -ENOTDIR;
                 break;
             }
-            a1fs_dentry *entry = 0;
-            entry = find_ent_inext(entry, get_node(fs, pos), fs, name, false);
-            load_inode(entry, &pos, fs);
+            find_ent_in_ext(get_node(fs, pos), fs, name, false);
+            load_inode(fs->ent, &pos, fs);
             name = init_path(path, false);
         }
         if (fs->err_code == 0)
@@ -419,11 +397,11 @@ void switch_bit(fs_ctx *fs, bool is_dir, int bit_number, bool deallocate)
 }
 
 /**Init extent when creating dir/file**/
-int init_ext(fs_ctx *fs, a1fs_extent *ext, unsigned int length, int blk_count, int size, bool init_ext)
+int init_ext(fs_ctx *fs, a1fs_extent *ext, unsigned int length, int blk_count, int size, bool is_empty)
 {
     int result = 0;
     //Init extent
-    if (!init_ext || (init_ext && size == -1))
+    if (!is_empty || (is_empty && size == -1))
     {
         ext->count = 0;
         find_ext_in_bitmap(fs, true, blk_count, ext);
@@ -432,12 +410,12 @@ int init_ext(fs_ctx *fs, a1fs_extent *ext, unsigned int length, int blk_count, i
         {
             unsigned char *bitmap = fs->image + update_free_bit(false, true, fs) * A1FS_BLOCK_SIZE;
             update_bitmap(false, c + ext->start, bitmap);
-            if (!init_ext)
-                memset(get_ext_info(true, fs, c + ext->start), 0, A1FS_BLOCK_SIZE);
+            if (!is_empty)
+                memset(update_ext_blk(true, fs, c + ext->start), 0, A1FS_BLOCK_SIZE);
 
             c++;
         }
-        if (!init_ext)
+        if (!is_empty)
         {
             fs->ext[size] = *ext;
             result = size + 1;
@@ -469,11 +447,12 @@ int load_datablock(a1fs_inode *inode, int blk_count, fs_ctx *fs)
         update_bitmap(false, ext.start, bitmap);
         inode->hz_extent_p = ext.start;
     }
-    get_ext_info(false, fs, inode->hz_extent_p);
+    update_ext_blk(false, fs, inode->hz_extent_p);
 
-    if (blk_count > 0)
+    while (blk_count > 0)
     {
         inode->hz_extent_size = init_ext(fs, &ext, blk_count, ext.count, inode->hz_extent_size, false);
+        blk_count -= ext.count;
     }
 
     return 0;
@@ -482,9 +461,9 @@ int load_datablock(a1fs_inode *inode, int blk_count, fs_ctx *fs)
 // Get the head of the inode
 void *point_to_head(a1fs_inode *inode, fs_ctx *fs)
 {
-    get_ext_info(false, fs, inode->hz_extent_p);
+    update_ext_blk(false, fs, inode->hz_extent_p);
     a1fs_extent ext_last = fs->ext[inode->hz_extent_size - 1];
-    return (void *)get_ext_info(true, fs, ext_last.start + ext_last.count - 1) + inode->size % A1FS_BLOCK_SIZE;
+    return (void *)update_ext_blk(true, fs, ext_last.start + ext_last.count - 1) + inode->size % A1FS_BLOCK_SIZE;
 }
 
 /**
@@ -540,5 +519,87 @@ int create_file_dir(fs_ctx *fs, const char *path, mode_t mode, bool is_file)
         fs->path_inode->size += sizeof(a1fs_dentry);
     }
 
+    return fs->err_code;
+}
+
+void switch_all_bits(fs_ctx *fs, unsigned int length, int blk_num, int offset, bool larger_num_blk)
+{
+    if (larger_num_blk)
+    {
+        blk_num += length - 1;
+        length = offset;
+    }
+
+    unsigned int k = 0;
+    while (k < length)
+    {
+        int nums = k;
+        if (larger_num_blk)
+        {
+            nums = -k;
+        }
+        switch_bit(fs, true, blk_num + nums, true);
+        k++;
+    }
+}
+/**
+ * Remove a directory or a file
+ * 
+*/
+int rm_dir_file(fs_ctx *fs, const char *path, bool is_dir)
+{
+
+    fs->err_code = 0;
+    //Extract file name and prefix path
+    char file[A1FS_NAME_MAX];
+    char prefix[A1FS_PATH_MAX];
+    strcpy(prefix, path);
+    strncpy(file, basename(prefix), A1FS_NAME_MAX);
+    strncpy(prefix, dirname(prefix), A1FS_PATH_MAX);
+    //Find corresponding inode
+    find_path_inode((const char *)(prefix), fs);
+    //Find corresponding directory entry
+    find_ent_in_ext(fs->path_inode, fs, file, false);
+    a1fs_inode *dir_inode = cal_inode(fs, fs->ent->ino);
+    if (is_dir && dir_inode->size > 0)
+        fs->err_code = -ENOTEMPTY;
+    if (fs->err_code != -ENOTEMPTY)
+    {
+        update_ext_blk(false, fs, dir_inode->hz_extent_p);
+        for (int i = 0; i < dir_inode->hz_extent_size; i++)
+        {
+            // Case where we have multiple extent
+
+            unsigned int k = 0;
+            while (k < fs->ext[i].count)
+            {
+                switch_bit(fs, true, i, true);
+                k++;
+            }
+        }
+        switch_bit(fs, true, dir_inode->hz_inode_pos, true);
+        a1fs_dentry *last = point_to_head(fs->path_inode, fs) - sizeof(a1fs_dentry);
+        memcpy(fs->ent, last, sizeof(a1fs_dentry));
+        //Update size
+        fs->path_inode->size -= sizeof(a1fs_dentry);
+        //Recheck if path inode is empty
+        if (fs->path_inode->size % A1FS_BLOCK_SIZE == 0)
+        {
+            //Update ext
+            update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
+            a1fs_extent *ext = &fs->ext[fs->path_inode->hz_extent_size - 1];
+            if ((int)ext->count != 1)
+            {
+                bool max_ext_count = (int)ext->count == (int)ext->count;
+                switch_all_bits(fs, ext->count, ext->start, 1, max(1, max_ext_count));
+                fs->path_inode->hz_extent_size -= 1 * (int)!max_ext_count;
+                ext->count -= 1 * (int)max_ext_count;
+            }
+            else
+            {
+                fs->path_inode->hz_extent_size -= 1;
+            }
+        }
+    }
     return fs->err_code;
 }

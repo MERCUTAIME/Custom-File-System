@@ -214,20 +214,18 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	fs_ctx *fs = get_fs();
 
 	fs->err_code = 0;
+	//Lookup the directory inode for given path and iterate through its
+	// directory entries
 
 	find_path_inode(path, fs);
-	a1fs_inode *dir = fs->path_inode;
-	a1fs_dentry *entries = malloc(dir->size);
-	if (entries == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
+	fs->ent = malloc(fs->path_inode->size);
+	if (fs->ent == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
 		return -ENOMEM;
-
-	//Bug here,should've assigned entry here,but it doesn't work
-	find_ent_inext(entries, dir, fs, "", true);
+	find_ent_in_ext(fs->path_inode, fs, "", true);
 	//Check whether calling filler generates error
-	//Update fs->err_code
-	check_filler_err(fs, dir->size, buf, filler, entries);
-	free(entries);
-
+	//Check if error occurs and Update fs->err_code
+	check_filler_err(fs, fs->path_inode->size, buf, filler, fs->ent);
+	free(fs->ent);
 	return fs->err_code;
 }
 
@@ -251,13 +249,12 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
  */
 static int a1fs_mkdir(const char *path, mode_t mode)
 {
-	{
-		mode = mode | S_IFDIR;
-		fs_ctx *fs = get_fs();
+	mode = mode | S_IFDIR;
+	fs_ctx *fs = get_fs();
+	//Clear error_code
+	fs->err_code = 0;
 
-		//Create a directory at given path with given mode
-		return create_file_dir(fs, path, mode, true);
-	}
+	return create_file_dir(fs, path, mode, false);
 }
 
 /**
@@ -277,11 +274,8 @@ static int a1fs_mkdir(const char *path, mode_t mode)
 static int a1fs_rmdir(const char *path)
 {
 	fs_ctx *fs = get_fs();
-
 	//TODO: remove the directory at given path (only if it's empty)
-	(void)path;
-	(void)fs;
-	return -ENOSYS;
+	return rm_dir_file(fs, path, true);
 }
 
 /**
@@ -329,11 +323,8 @@ static int a1fs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 static int a1fs_unlink(const char *path)
 {
 	fs_ctx *fs = get_fs();
-
-	//TODO: remove the file at given path
-	(void)path;
-	(void)fs;
-	return -ENOSYS;
+	//remove the file at given path
+	return rm_dir_file(fs, path, false);
 }
 
 /**
