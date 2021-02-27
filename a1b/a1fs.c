@@ -399,10 +399,21 @@ static int a1fs_truncate(const char *path, off_t size)
 	fs_ctx *fs = get_fs();
 
 	//TODO: set new file size, possibly "zeroing out" the uninitialized range
-	(void)path;
-	(void)size;
-	(void)fs;
-	return -ENOSYS;
+
+	//lookup the inode for given path and, if it exists, fill in the
+	//required fields based on the information stored in the inode
+
+	a1fs_inode *inode;
+	find_path(fs, &inode, path);
+	
+	if ((uint64_t) size == inode->size)
+		return 0;
+	else if ((uint64_t) size < inode->size)
+		return cut_file_size(fs, inode, (uint64_t)size);
+	else
+		return add_file_size(fs, inode, (uint64_t)size);
+	
+	return 0;
 }
 
 /**

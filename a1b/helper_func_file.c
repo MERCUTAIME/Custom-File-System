@@ -221,3 +221,20 @@ int find_path(fs_ctx *fs, a1fs_inode **target, const char *p)
     return fs->err_code;
 }
 
+int cut_file_size(fs_ctx *fs, a1fs_inode *inode, uint64_t size)
+{
+	inode->size = size;
+	int blocknum = size/A1FS_BLOCK_SIZE;
+	int block_off = size % A1FS_BLOCK_SIZE;
+	
+	//Check if blocknum is pointed by an extent stored in the file inode
+	a1fs_extent *extent_p = NULL;
+	for(int i=0; i<20; i++){
+		if(inode->extent_block[i]
+	}
+		
+	
+	
+	return 0;
+}
+
