@@ -21,12 +21,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include "helper_func_file.c"
 
 // Using 2.9.x FUSE API
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
+#include "helper_func_file.c"
 
+#include <time.h>
 #include "a1fs.h"
 #include "fs_ctx.h"
 #include "options.h"
@@ -155,27 +156,25 @@ static int a1fs_getattr(const char *path, struct stat *st)
 
 	memset(st, 0, sizeof(*st));
 
-	//NOTE: This is just a placeholder that allows the file system to be mounted
-	// without errors. You should remove this from your implementation.
+	//Clear err_node
+	fs->err_code = 0;
+	//TODO: lookup the inode for given path and, if it exists, fill in the
+	// required fields based on the information stored in the inode
 
-	//NOTE: all the fields set below are required and must be set according
-	// to the information stored in the corresponding inode
-	st->st_mode = S_IFDIR | 0777;
-	st->st_nlink = 2;
-	st->st_size = 0;
-	st->st_blocks = 0 * A1FS_BLOCK_SIZE / 512;
-	st->st_mtim = (struct timespec){0};
-	return 0;
-
-	//lookup the inode for given path and, if it exists, fill in the
-	//required fields based on the information stored in the inode
-
-	a1fs_inode *inode;
-	find_path(fs, &inode, path);
+	// a1fs_inode *inode;
+	// find_path(path, &inode, fs);
+	find_path_inode(path, fs);
 	if (fs->err_code == 0)
 	{
-		st->st_size = inode->size;
-		st->st_mode = inode->mode;
+
+		//NOTE: all the fields set below are required and must be set according
+		// to the information stored in the corresponding inode
+
+		st->st_nlink = fs->path_inode->links;
+		st->st_size = fs->path_inode->size;
+		st->st_mtim = fs->path_inode->mtime;
+		st->st_ino = fs->path_inode->hz_inode_pos;
+		st->st_mode = fs->path_inode->mode;
 		unsigned int result = 1 + st->st_size / A1FS_BLOCK_SIZE;
 		if (st->st_size % A1FS_BLOCK_SIZE == 0)
 		{
@@ -183,11 +182,7 @@ static int a1fs_getattr(const char *path, struct stat *st)
 		}
 		result *= A1FS_BLOCK_SIZE;
 		st->st_blocks = result / 512;
-		st->st_mtim = inode->mtime;
-		st->st_ino = inode->hz_inode_pos;
-		st->st_nlink = inode->links;
 	}
-
 	return fs->err_code;
 }
 
@@ -217,24 +212,21 @@ static int a1fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 	(void)offset; // unused
 	(void)fi;	  // unused
 	fs_ctx *fs = get_fs();
-	unsigned int b = 0;
 
-	a1fs_inode *dir;
-	find_path(fs, &dir, path);
-	cal_ent(dir, fs, true, "");
+	fs->err_code = 0;
+	//Lookup the directory inode for given path and iterate through its
+	// directory entries
 
-	if ((fs->ent) == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
+	find_path_inode(path, fs);
+	fs->ent = malloc(fs->path_inode->size);
+	if (fs->ent == NULL || filler(buf, ".", NULL, 0) || filler(buf, "..", NULL, 0))
 		return -ENOMEM;
-
-	while (b < (dir->size / sizeof(a1fs_dentry)))
-	{
-		if (filler(buf, fs->ent[b].name, NULL, 0) == 1)
-			return -ENOMEM;
-		b++;
-	}
-
+	find_ent_in_ext(fs->path_inode, fs, "", true);
+	//Check whether calling filler generates error
+	//Check if error occurs and Update fs->err_code
+	check_filler_err(fs, fs->path_inode->size, buf, filler, fs->ent);
 	free(fs->ent);
-	return 0;
+	return fs->err_code;
 }
 
 /**
@@ -259,12 +251,10 @@ static int a1fs_mkdir(const char *path, mode_t mode)
 {
 	mode = mode | S_IFDIR;
 	fs_ctx *fs = get_fs();
+	//Clear error_code
+	fs->err_code = 0;
 
-	//TODO: create a directory at given path with given mode
-	(void)path;
-	(void)mode;
-	(void)fs;
-	return -ENOSYS;
+	return create_file_dir(fs, path, mode, false);
 }
 
 /**
@@ -284,11 +274,8 @@ static int a1fs_mkdir(const char *path, mode_t mode)
 static int a1fs_rmdir(const char *path)
 {
 	fs_ctx *fs = get_fs();
-
 	//TODO: remove the directory at given path (only if it's empty)
-	(void)path;
-	(void)fs;
-	return -ENOSYS;
+	return rm_dir_file(fs, path, true);
 }
 
 /**
@@ -316,11 +303,8 @@ static int a1fs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	assert(S_ISREG(mode));
 	fs_ctx *fs = get_fs();
 
-	//TODO: create a file at given path with given mode
-	(void)path;
-	(void)mode;
-	(void)fs;
-	return -ENOSYS;
+	//Create a file at given path with given mode
+	return create_file_dir(fs, path, mode, true);
 }
 
 /**
@@ -339,11 +323,8 @@ static int a1fs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 static int a1fs_unlink(const char *path)
 {
 	fs_ctx *fs = get_fs();
-
-	//TODO: remove the file at given path
-	(void)path;
-	(void)fs;
-	return -ENOSYS;
+	//remove the file at given path
+	return rm_dir_file(fs, path, false);
 }
 
 /**
@@ -370,10 +351,20 @@ static int a1fs_utimens(const char *path, const struct timespec times[2])
 	//TODO: update the modification timestamp (mtime) in the inode for given
 	// path with either the time passed as argument or the current time,
 	// according to the utimensat man page
-	(void)path;
-	(void)times;
-	(void)fs;
-	return -ENOSYS;
+
+	//Clear error code
+	fs->err_code = 0;
+
+	find_path_inode(path, fs);
+	const struct timespec last_time = times[1];
+	if (last_time.tv_nsec != UTIME_NOW)
+		fs->path_inode->mtime = last_time;
+	else
+	{
+		clock_gettime(CLOCK_REALTIME, &(fs->path_inode->mtime));
+	}
+
+	return 0;
 }
 
 /**

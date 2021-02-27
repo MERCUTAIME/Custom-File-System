@@ -175,7 +175,8 @@ static bool mkfs(void *image, size_t size, mkfs_opts *opts)
 	bblk->hz_datablk_head = d_blk_first;
 
 	//init root dir
-	init_root_dir(bblk, image, databitmap_blk, blk_ibmp);
+	a1fs_inode *head_node = image + bblk->hz_inode_table * A1FS_BLOCK_SIZE;
+	init_dir(head_node, S_IFDIR | 0777, 0);
 
 	return true;
 }

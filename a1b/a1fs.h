@@ -34,6 +34,7 @@
 #define A1FS_BLOCK_SIZE 4096
 #define ENASDIR 300
 
+#define PROCESS 411
 /** Block number (block pointer) type. */
 typedef uint32_t a1fs_blk_t;
 
@@ -58,8 +59,6 @@ typedef struct a1fs_superblock
 	a1fs_blk_t hz_inode_table;
 	// Pointer to first datablock
 	a1fs_blk_t hz_datablk_head;
-	// //Size of i-node
-	// uint16_t hz_size_inode;
 	// free i-nodes
 	unsigned int num_free_inodes;
 	// free blocks
@@ -68,6 +67,7 @@ typedef struct a1fs_superblock
 	unsigned int num_inodes;
 	// Number of datablocks in total
 	unsigned int num_blocks;
+
 } a1fs_superblock;
 
 // Superblock must fit into a single block
@@ -114,10 +114,6 @@ typedef struct a1fs_inode
 
 	//TODO: add necessary fields
 
-	// // size of used extent
-	// unsigned int used_extent_count;
-	// //number of directory
-	// unsigned int dir_count;
 	// Size of the extent : block counts
 	uint16_t hz_extent_size;
 	// Pointer to the extents inside the data block

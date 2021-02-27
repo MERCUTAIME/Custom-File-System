@@ -28,18 +28,20 @@ bool fs_ctx_init(fs_ctx *fs, void *image, size_t size)
 	fs->ext = fs->image + (fs->bblk->hz_datablk_head) * A1FS_BLOCK_SIZE;
 	fs->tbl = fs->image + fs->bblk->hz_inode_table * A1FS_BLOCK_SIZE;
 	fs->err_code = 0;
+	fs->bitmp_inode = fs->image + (fs->bblk->hz_bitmap_inode) * A1FS_BLOCK_SIZE;
+	fs->bitmp_data = fs->image + fs->bblk->hz_bitmap_data * A1FS_BLOCK_SIZE;
+	fs->path_inode = 0;
 	return true;
 }
 
 void fs_ctx_destroy(fs_ctx *fs)
 {
-	//TODO: cleanup any resources allocated in fs_ctx_init()
+	//Cleanup any resources allocated in fs_ctx_init()
 	fs->image = NULL;
 	fs->size = -1;
-
 	fs->bblk = NULL;
 	fs->ext = NULL;
 	fs->tbl = NULL;
+	fs->path_inode = NULL;
 	fs->err_code = -1;
-	(void)fs;
 }
