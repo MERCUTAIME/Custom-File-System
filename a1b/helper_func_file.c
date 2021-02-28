@@ -524,21 +524,116 @@ int create_file_dir(fs_ctx *fs, const char *path, mode_t mode, bool is_file)
 
 int cut_file_size(fs_ctx *fs, a1fs_inode *inode, uint64_t size)
 {
-	inode->size = size;
-	int blocknum = size/A1FS_BLOCK_SIZE;
 	int block_off = size % A1FS_BLOCK_SIZE;
+	int block_mod_num = (inode->size - size - block_off)/ A1FS_BLOCK_SIZE;
+	inode->size = size;
 	
-	//Check if blocknum is pointed by an extent stored in the file inode
-	a1fs_extent *extent_p = NULL;
-	for(int i=0; i<20; i++){
-		if(inode->extent_block[i])
-            return 0;
-	}
+	if (block_mod_num <=0)
+		return 0;
+	
+	//find the end of the file
+	a1fs_extent *the_last_ext = &fs->ext[inode->hz_extent_size -1];
+	int last_block = the_last_ext->start + the_last_ext->count;
+	//if we only need to modify the last extent
+	if((int)the_last_ext->count > block_mod_num){	
+		the_last_ext->count -= block_mod_num;
+		for(int i=0; i<block_mod_num; i++){
+			/* fs->bblk->num_free_blocks+=1;
+			int byte_num = (last_block -1 -i)/8;
+			int bit_num = (last_block -1 -i)%8;
+			unsigned char bitmask = ~(1 << (7 - bit_num));
+			fs->bitmp_data[byte_num] = fs->bitmap[byte_num] & bitmask; */
+			switch_bit(fs, true, last_block - 1 - i, true);
+		}
 		
-	
-	
+	} //if we need to modify multiple extents
+	else if ((int)the_last_ext->count < block_mod_num){
+		for (int i=the_last_ext->start; i<last_block; i++){
+			/* fs->bblk->num_free_blocks+=1;
+			int byte_num = i /8;
+			int bit_num = i %8;
+			unsigned char bitmask = ~(1 << (7 - bit_num));
+			fs->bitmp_data[byte_num] = fs->bitmap[byte_num] & bitmask; */
+			switch_bit(fs, true, i, true);
+		}
+		block_mod_num -= the_last_ext->count;
+		inode->hz_extent_size -= 1;
+
+		if (block_mod_num > 0)
+			return cut_file_size(fs, inode, (uint64_t)size);
+		
+	}//we just need to delete this extent
+	else{
+		inode->hz_extent_size -=1;
+		
+	}
 	return 0;
 }
+
+
+/* int add_blocks(a1fs_inode *inode, int num_blocks, fs_ctx *fs, uint64_t size){
+	if(fs->bblk->num_free_blocks == 0)
+		return -ENOSPC;
+	if(num_blocks > (int)fs->bblk->num_free_blocks || inode->hz_extent_size == A1FS_BLOCK_SIZE / sizeof(a1fs_extent)){
+		return -ENOSPC;
+	}
+	int num_bits_dmap = fs->bblk->blocks_count - fs->bblk->resv_blocks_count;
+	unsigned char *data_bitmap = fs->image + fs->bblk->data_bitmap * A1FS_BLOCK_SIZE;
+
+	a1fs_extent extent;
+	
+    //initialize extent map if file empty
+	if(inode->extents == -1){
+		search_bitmap(data_bitmap, num_bits_dmap, 1, &extent);
+		allocate_bit('d', extent.start, fs);
+		inode->extents = extent.start;
+	}
+	
+	a1fs_extent *extents = get_extents(inode, fs);
+
+	while(num_blocks > 0){
+		search_bitmap(data_bitmap, num_bits_dmap, num_blocks, &extent);
+		allocate_extent(&extent, fs);
+		extents[inode->num_extents] = extent;
+		inode->num_extents++;
+		num_blocks -= extent.count;
+	}
+	inode->size += size;
+	return 0;
+} */
+
+int add_file_size(fs_ctx *fs, a1fs_inode *inode, uint64_t size)
+{
+	int free_space; //current free space in the last block
+	if(inode->size % A1FS_BLOCK_SIZE == 0)
+		free_space = 0;
+	else
+		free_space = A1FS_BLOCK_SIZE - inode->size % A1FS_BLOCK_SIZE;
+	
+	if(inode->hz_extent_size > 0){
+		/* a1fs_extent *extents = fs->image + (fs->bblk->hz_datablk_head + inode->hz_extent_p) * A1FS_BLOCK_SIZE;
+		a1fs_extent last_extent = extents[inode->hz_extent_size - 1];
+		int last_block = last_extent.start + last_extent.count - 1;
+		void *front = fs->image + (fs->bblk->hz_datablk_head + last_block) * A1FS_BLOCK_SIZE 
+						+ inode->size % A1FS_BLOCK_SIZE; */
+		void *front = point_to_head(inode, fs);
+		memset(front, 0, free_space);
+	
+	}
+	if(free_space >= size) {
+		inode->size += size;
+		return 0;
+	}
+
+	int num_blocks = (size - free_space) / A1FS_BLOCK_SIZE + (((size - free_space) % A1FS_BLOCK_SIZE) != 0);
+	
+	if(load_datablock(inode, num_blocks, fs)!=0)
+		return -ENOSPC;
+	inode->size += size;
+	return 0;
+	
+}
+
 
 void switch_all_bits(fs_ctx *fs, unsigned int length, int blk_num, int offset, bool larger_num_blk)
 {

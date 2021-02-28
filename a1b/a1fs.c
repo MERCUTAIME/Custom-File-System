@@ -395,12 +395,15 @@ static int a1fs_truncate(const char *path, off_t size)
 	//required fields based on the information stored in the inode
 
 	a1fs_inode *inode;
-	find_path(fs, &inode, path);
+	find_path_inode(path, fs);
+	inode = fs->path_inode;
 	
 	if ((uint64_t) size == inode->size)
 		return 0;
 	else if ((uint64_t) size < inode->size)
 		return cut_file_size(fs, inode, (uint64_t)size);
+	else if(((long)size-(long)inode->size)>(long)(fs->bblk->num_free_blocks)*A1FS_BLOCK_SIZE)
+		return -ENOSPC;
 	else
 		return add_file_size(fs, inode, (uint64_t)size);
 	
