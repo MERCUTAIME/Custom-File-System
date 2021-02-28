@@ -570,7 +570,7 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 	a1fs_inode *inode;
 	find_path_inode(path, fs);
 	inode = fs->path_inode;
-	
+	void *block;
 	int count = 0;
 	int data_i = -1;
 	int num_blocks = ((inode->size%A1FS_BLOCK_SIZE)==0) ? (inode->size/A1FS_BLOCK_SIZE):((inode->size/A1FS_BLOCK_SIZE)+1);
@@ -581,11 +581,11 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 			return -ENOSPC;
 		
 	if(offset > (int)inode->size)
-		if(add_file_size(inode, offset - inode->size, fs)!=0)
+		if(add_file_size(fs,inode, offset - inode->size)!=0)
 			return -ENOSPC;
 		
 	if(offset+size > inode->size)
-		if (add_file_size(inode, size, fs)!=0)
+		if (add_file_size(fs, inode, size)!=0)
 			return -ENOSPC;
 		
 	for(int i=0; i<inode->hz_extent_size; i++){
@@ -596,7 +596,7 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 			data_i = extent.start + count - num_blocks;
 			break;
 		}
-		void *block = fs->image + (fs->bblk->hz_datablk_head + num_blocks)*A1FS_BLOCK_SIZE;
+		block = fs->image + (fs->bblk->hz_datablk_head + data_i)*A1FS_BLOCK_SIZE;
 		
 	}
 	
