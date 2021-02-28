@@ -80,12 +80,8 @@ echo 'display the contents of the file'
 echo 'cat '${mnt}'/testdir/testfile'
 cat ${mnt}/testdir/testfile
 echo
-# echo 'test creating a file that fills the file system'
-# RET=0
-# until [ ${RET} -neq 0 ]; do
-    # echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile
-    # RET=$?
-# done
+echo 'test creating a file that fills the file system'
+while echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile; do echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile; done
 echo
 echo 'unmount the image'
 echo 'fusermount -u '${mnt}
