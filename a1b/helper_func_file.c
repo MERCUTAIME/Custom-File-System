@@ -29,6 +29,10 @@ unsigned int mkfs_helper(unsigned int a, unsigned int b)
     return result;
 }
 
+unsigned int round_up_divide(unsigned int x, unsigned int y){
+	return x / y + ((x % y) != 0);
+}
+
 int check_blk_err(int blk)
 {
 
@@ -634,9 +638,7 @@ int add_file_size(fs_ctx *fs, a1fs_inode *inode, int size)
 	
 }
 
-unsigned int round_up_divide(unsigned int x, unsigned int y){
-	return x / y + ((x % y) != 0);
-}
+
 
 void *get_byte(a1fs_inode *inode, int byte_number, fs_ctx *fs){
 	int data_block_number = -1;
