@@ -440,7 +440,7 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 	//TODO: read data from the file at given offset into the buffer
 	find_path_inode(path, fs);
 	a1fs_inode *inode = fs->path_inode;
-	if (inode->size < (int)offset)
+	if ((int)inode->size < offset)
 		return 0;
 	int byte_left = size;
 	int byte_read = 0;
