@@ -578,17 +578,16 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 	
 	if ((int)(offset + size) > (int)((fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE)) {
 				// We don't have enough free space for write, then we truncate as much as we have.
-				/* a1fs_truncate(path, (off_t)((fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE));
-				byte_to_write = (int)(fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE - offset; */
-				return -1;
+				a1fs_truncate(path, (off_t)((fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE));
+				byte_to_write = (int)(fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE - offset;
 		} 
-		/* else  
+		else  
 		{
 			// If it's not the case above then we can truncate to whatever size we want.
 			int error;
 			if ((error = a1fs_truncate(path, offset+size)) != 0)
 				return error;
-		}  */
+		} 
 		int bytes_need = byte_to_write;
 		int quotient = offset/A1FS_BLOCK_SIZE + 1;
 		int remainder = offset%A1FS_BLOCK_SIZE;
