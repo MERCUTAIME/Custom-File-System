@@ -625,7 +625,7 @@ int add_file_size(fs_ctx *fs, a1fs_inode *inode, int size)
 		return 0;
 	}
 
-	int num_blocks = (size - free_space) / A1FS_BLOCK_SIZE + (((size - free_space) % A1FS_BLOCK_SIZE) != 0);
+	int num_blocks = round_up_divide(size - free_space, A1FS_BLOCK_SIZE);
 	
 	if(load_datablock(inode, num_blocks, fs)!=0)
 		return -ENOSPC;
