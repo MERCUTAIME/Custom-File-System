@@ -602,7 +602,7 @@ int cut_file_size(fs_ctx *fs, a1fs_inode *inode, uint64_t size)
 	return 0;
 } */
 
-int add_file_size(fs_ctx *fs, a1fs_inode *inode, uint64_t size)
+int add_file_size(fs_ctx *fs, a1fs_inode *inode, int size)
 {
 	int free_space; //current free space in the last block
 	if(inode->size % A1FS_BLOCK_SIZE == 0)
