@@ -585,7 +585,7 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 		{
 			// If it's not the case above then we can truncate to whatever size we want.
 			int error;
-			if (error = a1fs_truncate(path, offset+size) != 0)
+			if ((error = a1fs_truncate(path, offset+size)) != 0)
 				return error;
 		} 
 		int bytes_need = byte_to_write;
