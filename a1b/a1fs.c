@@ -461,7 +461,7 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 			}
 			else
 				r = 0;
-			for (int i = first; i<= (int) extent->count; i++){
+			for (int i = first; i< (int) extent->count; i++){
 				char *src = (char*)(fs->image)+(extent->start + i) * A1FS_BLOCK_SIZE + r;
 				if (i == q && find_offset == 1) //where the offset is	
 					find_offset = 2;			
@@ -567,12 +567,42 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 
 	//TODO: write data from the buffer into the file at given offset, possibly
 	// "zeroing out" the uninitialized range
-	(void)path;
-	(void)buf;
-	(void)size;
-	(void)offset;
-	(void)fs;
-	return -ENOSYS;
+	a1fs_inode *inode;
+	find_path_inode(path, fs);
+	inode = fs->path_inode;
+	
+	int count = 0;
+	int data_i = -1;
+	int num_blocks = ((inode->size%A1FS_BLOCK_SIZE)==0) ? (inode->size/A1FS_BLOCK_SIZE):((inode->size/A1FS_BLOCK_SIZE)+1);
+	a1fs_extent *extents = fs->image + (fs->bblk->hz_datablk_head + inode -> hz_extent_p) * A1FS_BLOCK_SIZE;
+	
+	if (inode->hz_extent_p < 0)
+		if(load_datablock(inode, 0, fs)!= 0)
+			return -ENOSPC;
+		
+	if(offset > (int)inode->size)
+		if(add_file_size(inode, offset - inode->size, fs)!=0)
+			return -ENOSPC;
+		
+	if(offset+size > inode->size)
+		if (add_file_size(inode, size, fs)!=0)
+			return -ENOSPC;
+		
+	for(int i=0; i<inode->hz_extent_size; i++){
+		a1fs_extent extent = extents[i];
+		count += extent.count;
+		if(count >= num_blocks){
+			
+			data_i = extent.start + count - num_blocks;
+			break;
+		}
+		void *block = fs->image + (fs->bblk->hz_datablk_head + num_blocks)*A1FS_BLOCK_SIZE;
+		
+	}
+	
+	memcpy(block + offset % A1FS_BLOCK_SIZE, buf, size);
+	return size;
+	
 }
 
 static struct fuse_operations a1fs_ops = {
