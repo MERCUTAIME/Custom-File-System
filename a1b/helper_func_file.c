@@ -634,6 +634,26 @@ int add_file_size(fs_ctx *fs, a1fs_inode *inode, int size)
 	
 }
 
+void *get_byte(a1fs_inode *inode, int byte_number, fs_ctx *fs){
+	int data_block_number = -1;
+	int block_num_in_file = byte_number ? round_up_divide(byte_number, A1FS_BLOCK_SIZE) : 1;
+	a1fs_extent *extents = fs->image + (fs->bblk->hz_datablk_head + inode->extents) * A1FS_BLOCK_SIZE;
+	int count = 0;
+	for(int i = 0; i < inode->num_extents; i++){
+		a1fs_extent extent = extents[i];
+		count += extent.count;
+		if(count >= block_num_in_file){
+			data_block_number = extent.start + (count - block_num_in_file);
+			break;
+		}
+	}
+
+	void *data_block = fs->image + (fs->bblk->hz_datablk_head + data_block_number) * A1FS_BLOCK_SIZE;
+	void *start_byte = data_block + byte_number % A1FS_BLOCK_SIZE;
+	return start_byte;
+}
+
+
 
 void switch_all_bits(fs_ctx *fs, unsigned int length, int blk_num, int offset, bool larger_num_blk)
 {

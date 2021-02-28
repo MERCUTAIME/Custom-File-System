@@ -570,77 +570,30 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 	a1fs_inode *inode;
 	find_path_inode(path, fs);
 	inode = fs->path_inode;
-	int byte_written = 0;
-	int byte_to_write = size;
-	
-	int num_blocks = ((inode->size%A1FS_BLOCK_SIZE)==0) ? (inode->size/A1FS_BLOCK_SIZE):((inode->size/A1FS_BLOCK_SIZE)+1);
-	a1fs_extent *extents = fs->image + inode -> hz_extent_p * A1FS_BLOCK_SIZE;
-	
-	if ((int)(offset + size) > (int)((fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE)) {
-				// We don't have enough free space for write, then we truncate as much as we have.
-				a1fs_truncate(path, (off_t)((fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE));
-				byte_to_write = (int)(fs->bblk->num_free_blocks + num_blocks)*A1FS_BLOCK_SIZE - offset;
-		} 
-		else  
-		{
-			// If it's not the case above then we can truncate to whatever size we want.
-			int error;
-			if ((error = a1fs_truncate(path, offset+size)) != 0)
-				return error;
-		} 
-		int bytes_need = byte_to_write;
-		int quotient = offset/A1FS_BLOCK_SIZE + 1;
-		int remainder = offset%A1FS_BLOCK_SIZE;
-		int find_offset_flag = 0;
+	if(size == 0) return 0;
+	if(inode->hz_extent_p == -1){
+		if(load_datablock(inode, 0, fs) != 0) return -ENOSPC;
+	}
 
-		while (byte_written != byte_to_write)
-        {
-			if (find_offset_flag == 0)
-            {
-				if (quotient <= (int)extents->count)
-					{
-						find_offset_flag = 1;
-						continue;
-					} 
-				else quotient = quotient - extents->count;
-			}
-			else
-            {
-				int start = 1;
-				if (find_offset_flag == 1)
-					start = quotient;
-				else if (find_offset_flag == 2)
-					remainder = 0;
-				for (int i = start; i <= (int)extents->count; i++)
-                {
-					char *des = NULL;
-                    
-					if (i == quotient && find_offset_flag == 1)
-					{ // We are writing to the block that offset located at.
-						des = (char *)(fs->image) + remainder + (extents->start + i - 1)*A1FS_BLOCK_SIZE;
-						find_offset_flag = 2;
-					}
-                    // Otherwise we are writing to the start of the block.
-					else des = (char *)(fs->image) + (extents->start + i - 1)*A1FS_BLOCK_SIZE;
-                    
-					if (bytes_need <= A1FS_BLOCK_SIZE - remainder) 
-					{ // Cases when bytes_need to write to file is less than A1FS_BLOCK_SIZE - remainder.
-						strncpy(des, buf + byte_written, bytes_need);
-						byte_written += bytes_need;
-						bytes_need -= bytes_need;
-					}
-					else 
-					{ // Cases when bytes_need to write to file is greater than A1FS_BLOCK_SIZE.
-						strncpy(des, buf + byte_written, A1FS_BLOCK_SIZE);
-						byte_written -= A1FS_BLOCK_SIZE;
-						bytes_need -= A1FS_BLOCK_SIZE;
-					}
-				}
-			}
-			extents += 1;
-		}
-		return byte_written;
+	int error;
+
+	if(offset > (int)inode->size){
+		int num_bytes_uninitialized = offset - inode->size;
+		//add bytes from start of file to offset, not they are initialized to 0 by add_file_size
+		if((error = add_file_size(fs, inode, num_bytes_uninitialized)) != 0) return error;
+	}
+	
+	int num_additional_bytes_needed = (offset + size) - inode->size;
+	if(num_additional_bytes_needed > 0){
+		if((error = add_file_size(fs, inode, size)) != 0) return error;
+	}
+
+	void *offset_byte = get_byte(inode, offset, fs);
+	memcpy(offset_byte, buf, size);
+	return size;
 }
+
+
 
 static struct fuse_operations a1fs_ops = {
 	.destroy = a1fs_destroy,
