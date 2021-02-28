@@ -438,12 +438,100 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 	fs_ctx *fs = get_fs();
 
 	//TODO: read data from the file at given offset into the buffer
-	(void)path;
-	(void)buf;
-	(void)size;
-	(void)offset;
-	(void)fs;
-	return -ENOSYS;
+	a1fs_inode *inode = find_path_inode(path, fs);
+	if (inode->size < offset)
+		return 0;
+	int byte_left = size;
+	int byte_read = 0;
+	int extent_read = 0;
+	int file_size = inode->size;
+	int find_offset = 0;
+	int q = offset/A1FS_BLOCK_SIZE;
+	int r = offset%A1FS_BLOCK_SIZE;
+	alfs_extent *extent =  (struct a1fs_extent*)(fs->image + inode->hz_extent_p * A1FS_BLOCK_SIZE);
+	while(byte_left > 0 && file_size >0){
+		
+		//start to read
+		if(find_offset){
+			int first = 0;
+			if(find_offset == 1){ //the offset is here
+				first = q;
+				file_size -= r;
+			}
+			else
+				r = 0;
+			for (int i = first; i<= (int) extent->count; i++){
+				char *src = (char*)(fs->image)+(extent->first + i) * A1FS_BLOCK_SIZE + r;
+				if (i == q && find_offset == 1) //where the offset is	
+					find_offset = 2;			
+				else
+					src -= r;
+				
+				//if it's the end of extents
+				
+				if(extent_read == inode->hz_extent_size && i+1 == (int)extent->count){
+					
+					if(byte_left <= file_size){
+												
+						strncpy(buf, src, byte_left);
+						byte_read += byte_left;
+						buf[byte_read] = '\0';
+						byte_left = 0;
+						file_size -= byte_left;
+						break;
+					}
+					else{
+						strncpy(buf, src, file_size);
+						byte_read += file_size;
+						buf[*byte_read] = '\0';
+						byte_left -= file_size;
+						file_size = 0;
+						break;
+					}
+				}
+				else{
+					if (byte_left >= A1FS_BLOCK_SIZE - r){
+						strncpy(buf, src, A1FS_BLOCK_SIZE - r);
+						byte_read += A1FS_BLOCK_SIZE - r;
+						buf[byte_read] = '\0';
+						byte_left -= A1FS_BLOCK_SIZE - r;
+						file_size -= A1FS_BLOCK_SIZE - r;
+					}
+					else{
+						strncpy(buf, src, byte_left);
+						byte_read += byte_left;
+						
+						byte_left = 0;
+						file_size -= byte_left;
+						break;
+						
+					}
+					
+				}
+				
+			}
+			
+			extent_read +=1;
+			extent += 1;	
+			
+		}//find offset block
+		else{
+			if(q < extent->count){
+				file_size -= q * A1FS_BLOCK_SIZE;
+				find_offset = 1;
+			}
+			else{
+				file_size -= extent->count * A1FS_BLOCK_SIZE;
+				q -= extent->count;
+				extent_read +=1;
+				extent += 1;
+				
+			}		
+		}
+		
+	}
+	memset(buf + byte_read, 0, byte_left);
+	return byte_read;
 }
 
 /**
