@@ -438,7 +438,8 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 	fs_ctx *fs = get_fs();
 
 	//TODO: read data from the file at given offset into the buffer
-	a1fs_inode *inode = find_path_inode(path, fs);
+	find_path_inode(path, fs);
+	a1fs_inode *inode = fs->path_inode;
 	if (inode->size < offset)
 		return 0;
 	int byte_left = size;
@@ -448,7 +449,7 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 	int find_offset = 0;
 	int q = offset/A1FS_BLOCK_SIZE;
 	int r = offset%A1FS_BLOCK_SIZE;
-	alfs_extent *extent =  (struct a1fs_extent*)(fs->image + inode->hz_extent_p * A1FS_BLOCK_SIZE);
+	a1fs_extent *extent =  fs->image + inode->hz_extent_p * A1FS_BLOCK_SIZE;
 	while(byte_left > 0 && file_size >0){
 		
 		//start to read
@@ -461,7 +462,7 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 			else
 				r = 0;
 			for (int i = first; i<= (int) extent->count; i++){
-				char *src = (char*)(fs->image)+(extent->first + i) * A1FS_BLOCK_SIZE + r;
+				char *src = (char*)(fs->image)+(extent->start + i) * A1FS_BLOCK_SIZE + r;
 				if (i == q && find_offset == 1) //where the offset is	
 					find_offset = 2;			
 				else
@@ -483,7 +484,7 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 					else{
 						strncpy(buf, src, file_size);
 						byte_read += file_size;
-						buf[*byte_read] = '\0';
+						buf[byte_read] = '\0';
 						byte_left -= file_size;
 						file_size = 0;
 						break;
