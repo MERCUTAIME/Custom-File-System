@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+#takes the argument as the mount point e.g. /tmp/user
+mnt=$1
 echo 'create the image'
 echo 'truncate -s 10M this'
 truncate -s 10M this
@@ -8,50 +10,87 @@ echo 'format the image'
 echo './mkfs.a1fs -f -i 4096 this'
 ./mkfs.a1fs -f -i 4096 this
 echo 'mount the image'
-echo './a1fs this /tmp/mercutaime'
-./a1fs this /tmp/mercutaime
-
+echo './a1fs this '${mnt}
+./a1fs this ${mnt}
+echo
 echo 'test file system operations'
 echo 'create a directory'
-echo 'mkdir /tmp/mercutaime/testdir'
-mkdir /tmp/mercutaime/testdir
+echo 'mkdir '${mnt}'/testdir'
+mkdir ${mnt}/testdir
+echo
 echo 'display the contents of the root directory'
-echo 'ls /tmp/mercutaime'
-ls /tmp/mercutaime
+echo 'ls '${mnt}
+ls ${mnt}
+echo
 echo 'create a file'
-echo 'touch /tmp/mercutaime/testdir/testfile'
-touch /tmp/mercutaime/testdir/testfile
+echo 'touch '${mnt}'/testdir/testfile'
+touch ${mnt}/testdir/testfile
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo
 echo 'display the contents of the testdir directory'
-echo 'ls /tmp/mercutaime/testdir'
-ls /tmp/mercutaime/testdir
+echo 'ls '${mnt}'/testdir'
+ls ${mnt}/testdir
+echo
+echo 'Use touch to update the timestamp on a file'
+echo 'touch '${mnt}'/testdir/testfile'
+touch ${mnt}/testdir/testfile
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo
+echo 'test truncate to expand a file'
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo 'truncate -s 10 '${mnt}'/testdir/testfile'
+truncate -s 10 ${mnt}/testdir/testfile
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo
+echo 'test truncate to shrink a file'
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo 'truncate -s 5 '${mnt}'/testdir/testfile'
+truncate -s 5 ${mnt}/testdir/testfile
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo
 echo 'add data to the file'
-echo 'echo "blablabla" >> /tmp/mercutaime/testdir/testfile'
-echo "blablabla" >> /tmp/mercutaime/testdir/testfile
+echo 'echo "blablabla" >> '${mnt}'/testdir/testfile'
+echo "blablabla" >> ${mnt}/testdir/testfile
 echo 'display the contents of the file'
-echo 'cat /tmp/mercutaime/testdir/testfile'
-cat /tmp/mercutaime/testdir/testfile
+echo 'cat '${mnt}'/testdir/testfile'
+cat ${mnt}/testdir/testfile
+echo
+
 
 echo 'unmount the image'
-echo 'fusermount -u /tmp/mercutaime'
-fusermount -u /tmp/mercutaime
+echo 'fusermount -u '${mnt}
+fusermount -u ${mnt}
 echo 'mount the image again'
-echo './a1fs this /tmp/mercutaime'
-./a1fs this /tmp/mercutaime
-
+echo './a1fs this '${mnt}
+./a1fs this ${mnt}
+echo
 echo 'display the contents of the root directory'
-echo 'ls /tmp/mercutaime'
-ls /tmp/mercutaime
+echo 'ls '${mnt}
+ls ${mnt}
 echo 'display the contents of the testdir directory'
-echo 'ls /tmp/mercutaime/testdir'
-ls /tmp/mercutaime/testdir
+echo 'ls '${mnt}'/testdir'
+ls ${mnt}/testdir
 echo 'display the contents of the file'
-echo 'cat /tmp/mercutaime/testdir/testfile'
-cat /tmp/mercutaime/testdir/testfile
-
+echo 'cat '${mnt}'/testdir/testfile'
+cat ${mnt}/testdir/testfile
+echo
+echo 'test creating a file that fills the file system'
+while echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile; do echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile; done
+echo
 echo 'unmount the image'
-echo 'fusermount -u /tmp/mercutaime'
-fusermount -u /tmp/mercutaime
+echo 'fusermount -u '${mnt}
+fusermount -u ${mnt}
 echo 'remove created directory and file'
-rm -rf /tmp/mercutaime/testdir
+rm -rf ${mnt}/testdir
 rm this
+
+echo 'test a too-small disk image'
+truncate -s 16K this
+./mkfs.a1fs -f -i 4096 this
 echo 'done'
