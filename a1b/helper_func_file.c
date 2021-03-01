@@ -14,7 +14,7 @@
 #include "fs_ctx.h"
 #include "options.h"
 #include "map.h"
-//Helper for mkfs.c
+
 a1fs_inode *get_node(fs_ctx *fs, int pos)
 {
     return &(fs->tbl[pos]);
@@ -27,10 +27,6 @@ unsigned int mkfs_helper(unsigned int a, unsigned int b)
         result = result - 1;
     }
     return result;
-}
-
-unsigned int round_up_divide(unsigned int x, unsigned int y){
-	return x / y + ((x % y) != 0);
 }
 
 int check_blk_err(int blk)
@@ -436,9 +432,14 @@ int load_datablock(a1fs_inode *inode, int blk_count, fs_ctx *fs)
 {
     int free_blk = (int)fs->bblk->num_free_blocks;
     if (blk_count > free_blk || free_blk == 0)
+    {
+        fs->err_code = -ENOSPC;
         return -ENOSPC;
+    }
+
     if (blk_count > (int)fs->bblk->num_free_blocks || inode->hz_extent_size == A1FS_BLOCK_SIZE / sizeof(a1fs_extent))
     {
+        fs->err_code = -ENOSPC;
         return -ENOSPC;
     }
 
@@ -462,8 +463,8 @@ int load_datablock(a1fs_inode *inode, int blk_count, fs_ctx *fs)
     return 0;
 }
 
-// Get the head of the inode
-void *point_to_head(a1fs_inode *inode, fs_ctx *fs)
+// Get the end of the inode
+void *point_to_end(a1fs_inode *inode, fs_ctx *fs)
 {
     update_ext_blk(false, fs, inode->hz_extent_p);
     a1fs_extent ext_last = fs->ext[inode->hz_extent_size - 1];
@@ -515,7 +516,7 @@ int create_file_dir(fs_ctx *fs, const char *path, mode_t mode, bool is_file)
             }
             load_datablock(fs->path_inode, 1, fs);
         }
-        a1fs_dentry *ent = (a1fs_dentry *)(point_to_head(fs->path_inode, fs));
+        a1fs_dentry *ent = (a1fs_dentry *)(point_to_end(fs->path_inode, fs));
         ent->ino = node->hz_inode_pos;
         //Update entry info;
         fs->path_inode->links += ((node->mode & S_IFDIR) == S_IFDIR) ? 1 : 0;
@@ -525,141 +526,6 @@ int create_file_dir(fs_ctx *fs, const char *path, mode_t mode, bool is_file)
 
     return fs->err_code;
 }
-
-int cut_file_size(fs_ctx *fs, a1fs_inode *inode, uint64_t size)
-{
-	int block_off = size % A1FS_BLOCK_SIZE;
-	int block_mod_num = (inode->size - size - block_off)/ A1FS_BLOCK_SIZE;
-	inode->size = size;
-	
-	if (block_mod_num <=0)
-		return 0;
-	
-	//find the end of the file
-	a1fs_extent *the_last_ext = &fs->ext[inode->hz_extent_size -1];
-	int last_block = the_last_ext->start + the_last_ext->count;
-	//if we only need to modify the last extent
-	if((int)the_last_ext->count > block_mod_num){	
-		the_last_ext->count -= block_mod_num;
-		for(int i=0; i<block_mod_num; i++){
-			/* fs->bblk->num_free_blocks+=1;
-			int byte_num = (last_block -1 -i)/8;
-			int bit_num = (last_block -1 -i)%8;
-			unsigned char bitmask = ~(1 << (7 - bit_num));
-			fs->bitmp_data[byte_num] = fs->bitmap[byte_num] & bitmask; */
-			switch_bit(fs, true, last_block - 1 - i, true);
-		}
-		
-	} //if we need to modify multiple extents
-	else if ((int)the_last_ext->count < block_mod_num){
-		for (int i=the_last_ext->start; i<last_block; i++){
-			/* fs->bblk->num_free_blocks+=1;
-			int byte_num = i /8;
-			int bit_num = i %8;
-			unsigned char bitmask = ~(1 << (7 - bit_num));
-			fs->bitmp_data[byte_num] = fs->bitmap[byte_num] & bitmask; */
-			switch_bit(fs, true, i, true);
-		}
-		block_mod_num -= the_last_ext->count;
-		inode->hz_extent_size -= 1;
-
-		if (block_mod_num > 0)
-			return cut_file_size(fs, inode, (uint64_t)size);
-		
-	}//we just need to delete this extent
-	else{
-		inode->hz_extent_size -=1;
-		
-	}
-	return 0;
-}
-
-
-/* int add_blocks(a1fs_inode *inode, int num_blocks, fs_ctx *fs, uint64_t size){
-	if(fs->bblk->num_free_blocks == 0)
-		return -ENOSPC;
-	if(num_blocks > (int)fs->bblk->num_free_blocks || inode->hz_extent_size == A1FS_BLOCK_SIZE / sizeof(a1fs_extent)){
-		return -ENOSPC;
-	}
-	int num_bits_dmap = fs->bblk->blocks_count - fs->bblk->resv_blocks_count;
-	unsigned char *data_bitmap = fs->image + fs->bblk->data_bitmap * A1FS_BLOCK_SIZE;
-
-	a1fs_extent extent;
-	
-    //initialize extent map if file empty
-	if(inode->extents == -1){
-		search_bitmap(data_bitmap, num_bits_dmap, 1, &extent);
-		allocate_bit('d', extent.start, fs);
-		inode->extents = extent.start;
-	}
-	
-	a1fs_extent *extents = get_extents(inode, fs);
-
-	while(num_blocks > 0){
-		search_bitmap(data_bitmap, num_bits_dmap, num_blocks, &extent);
-		allocate_extent(&extent, fs);
-		extents[inode->num_extents] = extent;
-		inode->num_extents++;
-		num_blocks -= extent.count;
-	}
-	inode->size += size;
-	return 0;
-} */
-
-int add_file_size(fs_ctx *fs, a1fs_inode *inode, int size)
-{
-	int free_space; //current free space in the last block
-	if(inode->size % A1FS_BLOCK_SIZE == 0)
-		free_space = 0;
-	else
-		free_space = A1FS_BLOCK_SIZE - inode->size % A1FS_BLOCK_SIZE;
-	
-	if(inode->hz_extent_size > 0){
-		/* a1fs_extent *extents = fs->image + (fs->bblk->hz_datablk_head + inode->hz_extent_p) * A1FS_BLOCK_SIZE;
-		a1fs_extent last_extent = extents[inode->hz_extent_size - 1];
-		int last_block = last_extent.start + last_extent.count - 1;
-		void *front = fs->image + (fs->bblk->hz_datablk_head + last_block) * A1FS_BLOCK_SIZE 
-						+ inode->size % A1FS_BLOCK_SIZE; */
-		void *front = point_to_head(inode, fs);
-		memset(front, 0, free_space);
-	
-	}
-	if(free_space >= size) {
-		inode->size += size;
-		return 0;
-	}
-
-	int num_blocks = round_up_divide(size - free_space, A1FS_BLOCK_SIZE);
-	
-	if(load_datablock(inode, num_blocks, fs)!=0)
-		return -ENOSPC;
-	inode->size += size;
-	return 0;
-	
-}
-
-
-
-void *get_byte(a1fs_inode *inode, int byte_number, fs_ctx *fs){
-	int data_block_number = -1;
-	int block_num_in_file = byte_number ? round_up_divide(byte_number, A1FS_BLOCK_SIZE) : 1;
-	a1fs_extent *extents = fs->image + (fs->bblk->hz_datablk_head + inode->hz_extent_p) * A1FS_BLOCK_SIZE;
-	int count = 0;
-	for(int i = 0; i < inode->hz_extent_size; i++){
-		a1fs_extent extent = extents[i];
-		count += extent.count;
-		if(count >= block_num_in_file){
-			data_block_number = extent.start + (count - block_num_in_file);
-			break;
-		}
-	}
-
-	void *data_block = fs->image + (fs->bblk->hz_datablk_head + data_block_number) * A1FS_BLOCK_SIZE;
-	void *start_byte = data_block + byte_number % A1FS_BLOCK_SIZE;
-	return start_byte;
-}
-
-
 
 void switch_all_bits(fs_ctx *fs, unsigned int length, int blk_num, int offset, bool larger_num_blk)
 {
@@ -687,7 +553,6 @@ void switch_all_bits(fs_ctx *fs, unsigned int length, int blk_num, int offset, b
 */
 int rm_dir_file(fs_ctx *fs, const char *path, bool is_dir)
 {
-
     fs->err_code = 0;
     //Extract file name and prefix path
     char file[A1FS_NAME_MAX];
@@ -708,7 +573,6 @@ int rm_dir_file(fs_ctx *fs, const char *path, bool is_dir)
         for (int i = 0; i < dir_inode->hz_extent_size; i++)
         {
             // Case where we have multiple extent
-
             unsigned int k = 0;
             while (k < fs->ext[i].count)
             {
@@ -717,7 +581,7 @@ int rm_dir_file(fs_ctx *fs, const char *path, bool is_dir)
             }
         }
         switch_bit(fs, true, dir_inode->hz_inode_pos, true);
-        a1fs_dentry *last = point_to_head(fs->path_inode, fs) - sizeof(a1fs_dentry);
+        a1fs_dentry *last = point_to_end(fs->path_inode, fs) - sizeof(a1fs_dentry);
         memcpy(fs->ent, last, sizeof(a1fs_dentry));
         //Update size
         fs->path_inode->size -= sizeof(a1fs_dentry);
@@ -728,7 +592,7 @@ int rm_dir_file(fs_ctx *fs, const char *path, bool is_dir)
             update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
             a1fs_extent *ext = &fs->ext[fs->path_inode->hz_extent_size - 1];
             if ((int)ext->count != 1)
-            {
+            { //if we need to modify multiple extents
                 bool max_ext_count = (int)ext->count == (int)ext->count;
                 switch_all_bits(fs, ext->count, ext->start, 1, max(1, max_ext_count));
                 fs->path_inode->hz_extent_size -= 1 * (int)!max_ext_count;
@@ -736,9 +600,187 @@ int rm_dir_file(fs_ctx *fs, const char *path, bool is_dir)
             }
             else
             {
+                //Delete the extent
                 fs->path_inode->hz_extent_size -= 1;
             }
         }
     }
     return fs->err_code;
+}
+
+int get_free_space(fs_ctx *fs)
+{
+    size_t blk_size = A1FS_BLOCK_SIZE;
+    int free_space = fs->path_inode->size % blk_size; //current free space in the last block
+    if (free_space != 0)
+    {
+        free_space -= blk_size;
+        free_space *= -1;
+    }
+
+    if (fs->path_inode->hz_extent_size > 0)
+    {
+        update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
+        a1fs_extent ext_last = fs->ext[fs->path_inode->hz_extent_size - 1];
+        void *blk = (void *)update_ext_blk(true, fs, ext_last.start + ext_last.count - 1) + fs->path_inode->size % A1FS_BLOCK_SIZE;
+        memset(blk, 0, free_space);
+    }
+
+    return free_space;
+}
+void *cal_byte(int num, fs_ctx *fs)
+{
+    int result_blk = 1;
+    if (num)
+    {
+        result_blk = 1 + num / A1FS_BLOCK_SIZE;
+        if (num % A1FS_BLOCK_SIZE == 0)
+        {
+            result_blk = result_blk - 1;
+        }
+    }
+    update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
+    int trace = 0;
+    int k = 0;
+    while (k < fs->path_inode->hz_extent_size && trace < result_blk)
+    {
+        trace += fs->ext[k].count;
+        k++;
+    }
+    int db = (k != fs->path_inode->hz_extent_size) ? (int)(fs->ext[k].start + (trace - result_blk)) : -1;
+
+    return (void *)update_ext_blk(true, fs, db) + num % A1FS_BLOCK_SIZE;
+}
+/*
+* Deallocate the blocks
+*/
+void blk_deallocation(fs_ctx *fs, off_t size)
+{
+    int k = fs->path_inode->size - size;
+    fs->path_inode->size = size;
+    int num_blocks = (k - size % A1FS_BLOCK_SIZE) / A1FS_BLOCK_SIZE;
+
+    update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
+    while (num_blocks > 0)
+    {
+        a1fs_extent *ext = &fs->ext[fs->path_inode->hz_extent_size - 1];
+
+        if ((int)ext->count != num_blocks)
+        {
+            bool max_ext_count = (int)ext->count == (int)ext->count;
+            switch_all_bits(fs, ext->count, ext->start, num_blocks, max(num_blocks, max_ext_count));
+            num_blocks = (max_ext_count) ? 0 : num_blocks - ext->count;
+            fs->path_inode->hz_extent_size -= 1 * (int)!max_ext_count;
+            ext->count -= num_blocks * (int)max_ext_count;
+        }
+        else
+        {
+            fs->path_inode->hz_extent_size -= 1;
+            num_blocks = 0;
+        }
+    }
+}
+void byte_addition(fs_ctx *fs, a1fs_inode *node, int sizess)
+{
+    size_t blk_size = A1FS_BLOCK_SIZE;
+    int free_space = fs->path_inode->size % blk_size; //current free space in the last block
+    if (free_space != 0)
+    {
+        free_space -= blk_size;
+        free_space *= -1;
+    }
+
+    if (fs->path_inode->hz_extent_size > 0)
+    {
+        update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
+        a1fs_extent ext_last = fs->ext[fs->path_inode->hz_extent_size - 1];
+        void *blk = (void *)update_ext_blk(true, fs, ext_last.start + ext_last.count - 1) + fs->path_inode->size % A1FS_BLOCK_SIZE;
+        memset(blk, 0, free_space);
+    }
+
+    if (sizess - free_space > 0)
+    {
+        unsigned int result = 1 + (sizess - free_space) / blk_size;
+        if ((sizess - free_space) % blk_size == 0)
+        {
+            result = result - 1;
+        }
+        load_datablock(fs->path_inode, result, fs);
+    }
+    if (node)
+    {
+
+        fs->path_inode->size += sizess;
+    }
+}
+int read_write_IO(bool is_read, fs_ctx *fs, char *buf, size_t size, off_t offset)
+{
+    //Calculate the start/offset byte
+    int result_blk = 1;
+    if (offset)
+    {
+        result_blk = 1 + offset / A1FS_BLOCK_SIZE;
+        if (offset % A1FS_BLOCK_SIZE == 0)
+        {
+            result_blk = result_blk - 1;
+        }
+    }
+    //Update extent
+    update_ext_blk(false, fs, fs->path_inode->hz_extent_p);
+    int trace = 0;
+    int k = 0;
+    //Loop over extent until find the target block
+    while (k < fs->path_inode->hz_extent_size && trace < result_blk)
+    {
+        trace += fs->ext[k].count;
+        k++;
+    }
+    //Get Data block
+    int db = (k != fs->path_inode->hz_extent_size) ? (int)(fs->ext[k].start + (trace - result_blk)) : -1;
+
+    void *byte = (void *)update_ext_blk(true, fs, db) + offset % A1FS_BLOCK_SIZE;
+    //Check if is read or write
+    if (is_read)
+    {
+        //Get the byte
+        int rest_byte = point_to_end(fs->path_inode, fs) - byte;
+        int result_size = max(rest_byte, (int)size);
+        //Using memcpy to improve efficiency
+        memcpy(buf, byte, result_size);
+        if (result_size != (int)size)
+        {
+            unsigned int temp = size - rest_byte;
+            memset(buf + rest_byte, 0, temp);
+        }
+        return result_size;
+    }
+    else
+    {
+        memcpy(byte, buf, size);
+    }
+    return 0;
+}
+
+int get_num_byte(fs_ctx *fs, unsigned int offset_size)
+{
+    return offset_size - fs->path_inode->size;
+}
+
+void check_byte(fs_ctx *fs, int sizes, int condition)
+{
+    if (condition > 0)
+    {
+        int free_space = get_free_space(fs);
+        if (sizes - free_space > 0)
+        {
+            size_t blk_size = A1FS_BLOCK_SIZE;
+            unsigned int result = 1 + (sizes - free_space) / blk_size;
+            if ((sizes - free_space) % blk_size == 0)
+            {
+                result = result - 1;
+            }
+            load_datablock(fs->path_inode, result, fs);
+        }
+        fs->path_inode->size += sizes;
+    }
 }

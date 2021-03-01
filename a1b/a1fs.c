@@ -389,25 +389,22 @@ static int a1fs_truncate(const char *path, off_t size)
 {
 	fs_ctx *fs = get_fs();
 
-	//TODO: set new file size, possibly "zeroing out" the uninitialized range
-
-	//lookup the inode for given path and, if it exists, fill in the
-	//required fields based on the information stored in the inode
-
-	a1fs_inode *inode;
+	//Clear err_node
+	fs->err_code = 0;
 	find_path_inode(path, fs);
-	inode = fs->path_inode;
-	
-	if ((uint64_t) size == inode->size)
+	unsigned int unsign_size = (unsigned int)size;
+	if (unsign_size == fs->path_inode->size)
+	{
 		return 0;
-	else if ((uint64_t) size < inode->size)
-		return cut_file_size(fs, inode, (uint64_t)size);
-	else if(((long)size-(long)inode->size)>(long)(fs->bblk->num_free_blocks)*A1FS_BLOCK_SIZE)
-		return -ENOSPC;
-	else
-		return add_file_size(fs, inode, (uint64_t)size);
-	
-	return 0;
+	}
+	check_byte(fs, size, unsign_size - fs->path_inode->size);
+	if (fs->err_code == 0 && unsign_size < fs->path_inode->size)
+	{
+
+		blk_deallocation(fs, size);
+	}
+
+	return fs->err_code;
 }
 
 /**
@@ -437,102 +434,17 @@ static int a1fs_read(const char *path, char *buf, size_t size, off_t offset,
 	(void)fi; // unused
 	fs_ctx *fs = get_fs();
 
-	//TODO: read data from the file at given offset into the buffer
+	//Clear Error code
+	fs->err_code = 0;
+
 	find_path_inode(path, fs);
-	a1fs_inode *inode = fs->path_inode;
-	if ((int)inode->size < offset)
-		return 0;
-	int byte_left = size;
-	int byte_read = 0;
-	int extent_read = 0;
-	int file_size = inode->size;
-	int find_offset = 0;
-	int q = offset/A1FS_BLOCK_SIZE;
-	int r = offset%A1FS_BLOCK_SIZE;
-	a1fs_extent *extent =  fs->image + inode->hz_extent_p * A1FS_BLOCK_SIZE;
-	while(byte_left > 0 && file_size >0){
-		
-		//start to read
-		if(find_offset){
-			int first = 0;
-			if(find_offset == 1){ //the offset is here
-				first = q;
-				file_size -= r;
-			}
-			else
-				r = 0;
-			for (int i = first; i< (int) extent->count; i++){
-				char *src = (char*)(fs->image)+(extent->start + i) * A1FS_BLOCK_SIZE + r;
-				if (i == q && find_offset == 1) //where the offset is	
-					find_offset = 2;			
-				else
-					src -= r;
-				
-				//if it's the end of extents
-				
-				if(extent_read == inode->hz_extent_size && i+1 == (int)extent->count){
-					
-					if(byte_left <= file_size){
-												
-						strncpy(buf, src, byte_left);
-						byte_read += byte_left;
-						buf[byte_read] = '\0';
-						byte_left = 0;
-						file_size -= byte_left;
-						break;
-					}
-					else{
-						strncpy(buf, src, file_size);
-						byte_read += file_size;
-						buf[byte_read] = '\0';
-						byte_left -= file_size;
-						file_size = 0;
-						break;
-					}
-				}
-				else{
-					if (byte_left >= A1FS_BLOCK_SIZE - r){
-						strncpy(buf, src, A1FS_BLOCK_SIZE - r);
-						byte_read += A1FS_BLOCK_SIZE - r;
-						buf[byte_read] = '\0';
-						byte_left -= A1FS_BLOCK_SIZE - r;
-						file_size -= A1FS_BLOCK_SIZE - r;
-					}
-					else{
-						strncpy(buf, src, byte_left);
-						byte_read += byte_left;
-						
-						byte_left = 0;
-						file_size -= byte_left;
-						break;
-						
-					}
-					
-				}
-				
-			}
-			
-			extent_read +=1;
-			extent += 1;	
-			
-		}//find offset block
-		else{
-			if(q < (int)extent->count){
-				file_size -= q * A1FS_BLOCK_SIZE;
-				find_offset = 1;
-			}
-			else{
-				file_size -= extent->count * A1FS_BLOCK_SIZE;
-				q -= extent->count;
-				extent_read +=1;
-				extent += 1;
-				
-			}		
-		}
-		
+	unsigned int inode_size = fs->path_inode->size;
+	if (inode_size != 0 && inode_size <= offset)
+	{
+		return read_write_IO(true, fs, buf, size, offset);
 	}
-	memset(buf + byte_read, 0, byte_left);
-	return byte_read;
+
+	return 0;
 }
 
 /**
@@ -564,36 +476,36 @@ static int a1fs_write(const char *path, const char *buf, size_t size,
 {
 	(void)fi; // unused
 	fs_ctx *fs = get_fs();
-
-	//TODO: write data from the buffer into the file at given offset, possibly
-	// "zeroing out" the uninitialized range
-	a1fs_inode *inode;
+	fs->err_code = 0;
+	//Check if size is empty
+	if (size == 0)
+		return 0;
+	//Find correponding path inode
 	find_path_inode(path, fs);
-	inode = fs->path_inode;
-	if(size == 0) return 0;
-	if(inode->hz_extent_p == -1){
-		if(load_datablock(inode, 0, fs) != 0) return -ENOSPC;
-	}
 
-	int error;
-
-	if(offset > (int)inode->size){
-		int num_bytes_uninitialized = offset - inode->size;
-		//add bytes from start of file to offset, not they are initialized to 0 by add_file_size
-		if((error = add_file_size(fs, inode, num_bytes_uninitialized)) != 0) return error;
+	if (fs->path_inode->hz_extent_p == -1)
+	{
+		load_datablock(fs->path_inode, 0, fs);
 	}
-	
-	int num_additional_bytes_needed = (offset + size) - inode->size;
-	if(num_additional_bytes_needed > 0){
-		if((error = add_file_size(fs, inode, size)) != 0) return error;
-	}
+	if (fs->err_code == 0)
+	{
 
-	void *offset_byte = get_byte(inode, offset, fs);
-	memcpy(offset_byte, buf, size);
-	return size;
+		check_byte(fs, get_num_byte(fs, offset), offset - fs->path_inode->size);
+		if (fs->err_code == 0)
+		{
+			if (get_num_byte(fs, offset + size) > 0)
+			{
+				byte_addition(fs, fs->path_inode, (int)size);
+			}
+		}
+		if (fs->err_code == 0)
+		{
+			read_write_IO(false, fs, (char *)buf, size, offset);
+			return size;
+		}
+	}
+	return fs->err_code;
 }
-
-
 
 static struct fuse_operations a1fs_ops = {
 	.destroy = a1fs_destroy,
