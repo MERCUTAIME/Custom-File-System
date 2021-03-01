@@ -25,8 +25,7 @@
 /**
  * Mounted file system runtime state - "fs context".
  */
-typedef struct fs_ctx
-{
+typedef struct fs_ctx {
 	/** Pointer to the start of the image. */
 	void *image;
 	/** Image size in bytes. */

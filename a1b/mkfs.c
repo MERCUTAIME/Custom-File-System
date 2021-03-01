@@ -28,8 +28,7 @@
 #include "helper_func_file.c"
 
 /** Command line options. */
-typedef struct mkfs_opts
-{
+typedef struct mkfs_opts {
 	/** File system image file path. */
 	const char *img_path;
 	/** Number of inodes. */
@@ -90,15 +89,13 @@ static bool parse_args(int argc, char *argv[], mkfs_opts *opts)
 		}
 	}
 
-	if (optind >= argc)
-	{
+	if (optind >= argc){
 		fprintf(stderr, "Missing image path\n");
 		return false;
 	}
 	opts->img_path = argv[optind];
 
-	if (opts->n_inodes == 0)
-	{
+	if (opts->n_inodes == 0){
 		fprintf(stderr, "Missing or invalid number of inodes\n");
 		return false;
 	}
@@ -183,15 +180,13 @@ static bool mkfs(void *image, size_t size, mkfs_opts *opts)
 
 int main(int argc, char *argv[])
 {
-	mkfs_opts opts = {0}; // defaults are all 0
-	if (!parse_args(argc, argv, &opts))
-	{
+    mkfs_opts opts = {0};// defaults are all 0
+	    if (!parse_args(argc, argv, &opts)) {
 		// Invalid arguments, print help to stderr
 		print_help(stderr, argv[0]);
 		return 1;
 	}
-	if (opts.help)
-	{
+    if (opts.help) {
 		// Help requested, print it to stdout
 		print_help(stdout, argv[0]);
 		return 0;
@@ -200,21 +195,17 @@ int main(int argc, char *argv[])
 	// Map image file into memory
 	size_t size;
 	void *image = map_file(opts.img_path, A1FS_BLOCK_SIZE, &size);
-	if (image == NULL)
-		return 1;
+    if (image == NULL) return 1;
 
 	// Check if overwriting existing file system
 	int ret = 1;
-	if (!opts.force && a1fs_is_present(image))
-	{
+    if (!opts.force && a1fs_is_present(image)) {
 		fprintf(stderr, "Image already contains a1fs; use -f to overwrite\n");
 		goto end;
 	}
 
-	if (opts.zero)
-		memset(image, 0, size);
-	if (!mkfs(image, size, &opts))
-	{
+    if (opts.zero) memset(image, 0, size);
+	    if (!mkfs(image, size, &opts)) {
 		fprintf(stderr, "Failed to format the image\n");
 		goto end;
 	}

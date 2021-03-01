@@ -45,8 +45,7 @@ typedef uint32_t a1fs_ino_t;
 #define A1FS_MAGIC 0xC5C369A1C5C369A1ul
 
 /** a1fs superblock. */
-typedef struct a1fs_superblock
-{
+typedef struct a1fs_superblock {
 	/** Must match A1FS_MAGIC. */
 	uint64_t magic;
 	/** File system size in bytes. */
@@ -75,8 +74,7 @@ static_assert(sizeof(a1fs_superblock) <= A1FS_BLOCK_SIZE,
 			  "superblock is too large");
 
 /** Extent - a contiguous range of blocks. */
-typedef struct a1fs_extent
-{
+typedef struct a1fs_extent {
 	/** Starting block of the extent. */
 	a1fs_blk_t start;
 	/** Number of blocks in the extent. */
@@ -85,8 +83,7 @@ typedef struct a1fs_extent
 } a1fs_extent;
 
 /** a1fs inode. */
-typedef struct a1fs_inode
-{
+typedef struct a1fs_inode {
 	/** File mode. */
 	mode_t mode;
 
@@ -140,8 +137,7 @@ static_assert(A1FS_BLOCK_SIZE % sizeof(a1fs_inode) == 0, "invalid inode size");
 #define A1FS_PATH_MAX PATH_MAX
 
 /** Fixed size directory entry structure. */
-typedef struct a1fs_dentry
-{
+typedef struct a1fs_dentry {
 	/** Inode number. */
 	a1fs_ino_t ino;
 	/** File name. A null-terminated string. */
