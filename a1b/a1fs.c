@@ -21,7 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-
+#include <math.h>
+#define max(a, b) (((a) > (b)) ? (a) : (b))
 // Using 2.9.x FUSE API
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
