@@ -75,10 +75,14 @@ echo 'cat '${mnt}'/testdir/testfile'
 cat ${mnt}/testdir/testfile
 echo
 echo 'Use touch to update the timestamp on a file'
+echo 'Show stats of testfile'
+stat ${mnt}/testdir/testfile
+echo 'wait for 1 second'
+sleep 1
 echo 'touch '${mnt}'/testdir/testfile'
 touch ${mnt}/testdir/testfile
-echo 'ls -l '${mnt}'/testdir/testfile'
-ls -l ${mnt}/testdir/testfile
+echo 'Show stats of testfile'
+stat ${mnt}/testdir/testfile
 echo
 
 echo 'test creating a file that fills the file system'
