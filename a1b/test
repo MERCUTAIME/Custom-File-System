@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+echo "Enter the path of the mount point"
+read mnt
+echo "hello ${mnt}"

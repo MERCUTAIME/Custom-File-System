@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-#takes the argument as the mount point e.g. /tmp/user
-mnt=$1
+echo "Enter the path of the mount point"
+read mnt
+echo "-----------------------------------"
 echo 'create the image'
 echo 'truncate -s 10M this'
 truncate -s 10M this
