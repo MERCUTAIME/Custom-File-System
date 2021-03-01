@@ -18,8 +18,11 @@ creating a file, adding data to a file all works
 - Using 'touch' to update the timestamp on a file works
 
 - Creating a file that fills the file system by appending data 
-to the file returns ENOSPC. 
+to the file returns error.
 
 - After unmounting and remounting the file system, data is 
 still there and we can create files and write to them again. 
 
+One thing that our code does not do well is that when a file 
+is filling the file system, we get "write error: Transport endpoint
+is not connected" as error message instead of ENOSPC. 
