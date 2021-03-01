@@ -33,12 +33,6 @@ echo 'display the contents of the testdir directory'
 echo 'ls '${mnt}'/testdir'
 ls ${mnt}/testdir
 echo
-echo 'Use touch to update the timestamp on a file'
-echo 'touch '${mnt}'/testdir/testfile'
-touch ${mnt}/testdir/testfile
-echo 'ls -l '${mnt}'/testdir/testfile'
-ls -l ${mnt}/testdir/testfile
-echo
 echo 'test truncate to expand a file'
 echo 'ls -l '${mnt}'/testdir/testfile'
 ls -l ${mnt}/testdir/testfile
@@ -55,18 +49,10 @@ truncate -s 5 ${mnt}/testdir/testfile
 echo 'ls -l '${mnt}'/testdir/testfile'
 ls -l ${mnt}/testdir/testfile
 echo
-echo 'add data to the file'
-echo 'echo "blablabla" >> '${mnt}'/testdir/testfile'
-echo "blablabla" >> ${mnt}/testdir/testfile
-echo 'display the contents of the file'
-echo 'cat '${mnt}'/testdir/testfile'
-cat ${mnt}/testdir/testfile
-echo
-
-
 echo 'unmount the image'
 echo 'fusermount -u '${mnt}
 fusermount -u ${mnt}
+echo
 echo 'mount the image again'
 echo './a1fs this '${mnt}
 ./a1fs this ${mnt}
@@ -81,6 +67,20 @@ echo 'display the contents of the file'
 echo 'cat '${mnt}'/testdir/testfile'
 cat ${mnt}/testdir/testfile
 echo
+echo 'add data to the file'
+echo 'echo "blablabla" >> '${mnt}'/testdir/testfile'
+echo "blablabla" >> ${mnt}/testdir/testfile
+echo 'display the contents of the file'
+echo 'cat '${mnt}'/testdir/testfile'
+cat ${mnt}/testdir/testfile
+echo
+echo 'Use touch to update the timestamp on a file'
+echo 'touch '${mnt}'/testdir/testfile'
+touch ${mnt}/testdir/testfile
+echo 'ls -l '${mnt}'/testdir/testfile'
+ls -l ${mnt}/testdir/testfile
+echo
+
 echo 'test creating a file that fills the file system'
 while echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile; do echo 'blablablablablablablablabla' >> ${mnt}/testdir/testfile; done
 echo
