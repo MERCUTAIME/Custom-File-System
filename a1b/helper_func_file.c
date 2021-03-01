@@ -43,29 +43,6 @@ int check_blk_err(int blk)
     return blk;
 }
 
-void dr_arr(unsigned int arr_bitmap[])
-{
-    for (int i = 0; i < 2; i++)
-    {
-        unsigned int ratio = 1 + arr_bitmap[2] / arr_bitmap[i];
-        if ((arr_bitmap[2] % arr_bitmap[i]) == 0)
-            arr_bitmap[i] = ratio - 1;
-        else
-        {
-            arr_bitmap[i] = ratio;
-        }
-    }
-}
-void arr_construct(a1fs_blk_t data, void *image, unsigned int bmp, bool is_imap)
-{
-    unsigned char *arr = data * A1FS_BLOCK_SIZE + image;
-    memset(arr, 0, bmp * A1FS_BLOCK_SIZE);
-    if (is_imap)
-    {
-        arr[0] = 1 << 7;
-    }
-}
-
 /**Init root dir Based on the given information. **/
 void init_dir(a1fs_inode *head_node, mode_t mode, int pos)
 {
